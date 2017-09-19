@@ -4,6 +4,8 @@
 #include <string.h>
 #include <math.h>
 
+#include "redblack.h"
+
 #include "mioarray.h"
 #include "mioregress.h"
 
@@ -77,6 +79,77 @@ Array2D *TrajectoryMatrix(Array1D *x, int start, int end, int m, int k)
 
 	return(tr);
 }
+
+int SortEigenVectors(Array1D *ev, Array2D *ea)
+{
+	RB *map;
+	RB *rb;
+	int i;
+	int j;
+	Array2D *sea;
+	Array1D *sev;
+	int s_j;
+
+	map = RBInitD();
+	if(map == NULL) {
+		return(-1);
+	}
+
+	sea = MakeArray2D(ea->xdim,ea->ydim);
+	if(sea == NULL) {
+		RBDestroyD(map);
+		return(-1);
+	}
+
+	sev = MakeArray1D(ev->ydim);
+	if(sev == NULL) {
+		RBDestroyD(map);
+		FreeArray2D(sea);
+		return(-1);
+	}
+
+	for(i=0; i < ev->ydim; i++) {
+		RBInsertD(map,ev->data[i],(Hval)i);
+	}
+
+	s_j = 0;
+	/*
+	 * move the columns and create sorted ev
+	 */
+	RB_BACKWARD(map,rb) {
+		j = rb->value.i;
+		for(i=0; i < ea->ydim; i++) {
+			sea->data[i * sea->xdim + s_j] =
+				ea->data[i * ea->xdim + j];
+		}
+		sev->data[s_j] = ev->data[j];
+		s_j += 1;
+	}
+
+	/*
+	 * now overwrite ev with sorted data
+	 */
+	for(j=0; j < ev->ydim; j++) {
+		ev->data[j] = sev->data[j];
+	}
+
+	/*
+	 * and overwrite ea with sorted ea
+	 */
+	for(i=0; i < ea->ydim; i++) {
+		for(j=0; j < ea->xdim; j++) {
+			ea->data[i*ea->xdim+j] = 
+				sea->data[i*sea->xdim+j];
+		}
+	}
+
+	RBDestroyD(map);
+	FreeArray2D(sea);
+	FreeArray1D(sev);
+
+	return(1);
+}
+	
 
 double DStat(Array2D *trajectory, Array2D *eigenvectors)
 {
@@ -240,15 +313,27 @@ int main(int argc, char *argv[])
 		fprintf(stderr,"couldn't get eigen values\n");
 		exit(1);
 	}
-	printf("eigen values of lag-co-var-matrix\n");
-	PrintArray1D(ev);
-	printf("\n");
 
 	ea = EigenVectorArray2D(lcv);
 	if(ea == NULL) {
 		fprintf(stderr,"couldn't get eigen vectors\n");
 		exit(1);
 	}
+	printf("before sort\n");
+	PrintArray1D(ev);
+	printf("\n");
+	printf("eigen vectors of lag-co-var-matrix\n");
+	PrintArray1D(ea);
+	printf("\n");
+
+
+
+	SortEigenVectors(ev,ea);
+
+	printf("eigen values of lag-co-var-matrix\n");
+	PrintArray1D(ev);
+	printf("\n");
+
 	printf("eigen vectors of lag-co-var-matrix\n");
 	PrintArray1D(ea);
 
