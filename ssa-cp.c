@@ -95,7 +95,7 @@ int SortEigenVectors(Array1D *ev, Array2D *ea)
 		return(-1);
 	}
 
-	sea = MakeArray2D(ea->xdim,ea->ydim);
+	sea = MakeArray2D(ea->ydim,ea->xdim);
 	if(sea == NULL) {
 		RBDestroyD(map);
 		return(-1);
@@ -184,9 +184,9 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 	}
 
 	d = 0;
-	for(i=0; i < trajectory->ydim; i++) {
-		for(j=0; j < trajectory->xdim; j++) {
-			x->data[j] = trajectory->data[i*trajectory->xdim+j];
+	for(j=0; j < trajectory->xdim; j++) {
+		for(i=0; i < trajectory->ydim; i++) {
+			x->data[i] = trajectory->data[i*trajectory->xdim+j];
 		}
 		xt = TransposeArray1D(x);
 		if(xt == NULL) {
@@ -235,9 +235,11 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 
 #ifdef STANDALONE
 
-#define ARGS "x:l:"
+#define ARGS "x:l:p:q:"
 char *Usage = "usage: ssa-cp -x xfile\n\
-\t-l lags\n";
+\t-l lags\n\
+\t-p starting index of test matrix\n\
+\t-q ending index of test matrix\n";
 
 char Xfile[4096];
 
@@ -249,13 +251,23 @@ int main(int argc, char *argv[])
 	MIO *xmio;
 	Array1D *ev;
 	Array2D *ea;
+	Array2D *l_ea;
 	Array2D *lcv;
-	Array2D *tr;
+	Array2D *tr_base;
+	Array2D *tr_test;
 	Array1D *x;
+	Array1D *base_x;
+	Array1D *test_x;
 	int lags;
-	double d;
+	double d_base;
+	double d_test;
+	int p;
+	int Q;
+	int i;
+	int j;
 
 	lags = 1;
+	Q = 0;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
@@ -263,6 +275,12 @@ int main(int argc, char *argv[])
 				break;
 			case 'l':
 				lags = atoi(optarg);
+				break;
+			case 'p':
+				p = atoi(optarg);
+				break;
+			case 'q':
+				Q = atoi(optarg);
 				break;
 			default:
 				fprintf(stderr,
@@ -274,6 +292,12 @@ int main(int argc, char *argv[])
 
 	if(Xfile[0] == 0) {
 		fprintf(stderr,"must specify xfile\n");
+		fprintf(stderr,"%s",Usage);
+		exit(1);
+	}
+
+	if(p == 0) {
+		fprintf(stderr,"must specify starting point for test matrix\n");
 		fprintf(stderr,"%s",Usage);
 		exit(1);
 	}
@@ -292,17 +316,50 @@ int main(int argc, char *argv[])
 
 	x = MakeArray2DFromMIO(xmio);
 
+	if(x == NULL) {
+		exit(1);
+	}
+
+	if(Q == 0) {
+		Q = x->ydim - lags;
+	}
+
+	if(x->ydim > (p+Q)) {
+		fprintf(stderr,"data has %d elements, but p+q is %d\n",
+			x->ydim,p+Q);
+		exit(1);
+	}
+
+	base_x = MakeArray1D(x->ydim - (p-1));	// base is everything up to p-1
+	if(base_x == NULL) {
+		exit(1);
+	}
+
+	test_x = MakeArray1D(Q);		// test array is p through q
+	if(test_x == NULL) {
+		exit(1);
+	}
+
+	for(i=0; i < p; i++) {
+		base_x->data[i] = x->data[i];
+	}
+
+	for(i=p; i < Q; i++) {
+		test_x->data[i-p] = x->data[i];
+	}
+
+
 	/*
 	 * for now, do whole matrix
 	 */
-	tr = TrajectoryMatrix(x,0,x->ydim,lags,x->ydim - lags);
-	if(tr == NULL) {
+	tr_base = TrajectoryMatrix(base_x,0,base_x->ydim,lags,base_x->ydim - lags);
+	if(tr_base == NULL) {
 		fprintf(stderr, 
 			"couldn't create trajctory matrix for %d lags\n",
 				lags);
 		exit(1);
 	}
-	lcv = LagVarArray2D(tr);
+	lcv = LagVarArray2D(tr_base);
 	if(lcv == NULL) {
 		fprintf(stderr,
 			"couldn't compute lag-co-var matrix\n");
@@ -319,14 +376,14 @@ int main(int argc, char *argv[])
 		fprintf(stderr,"couldn't get eigen vectors\n");
 		exit(1);
 	}
+#if 0
 	printf("before sort\n");
 	PrintArray1D(ev);
 	printf("\n");
 	printf("eigen vectors of lag-co-var-matrix\n");
 	PrintArray1D(ea);
 	printf("\n");
-
-
+#endif
 
 	SortEigenVectors(ev,ea);
 
@@ -337,14 +394,52 @@ int main(int argc, char *argv[])
 	printf("eigen vectors of lag-co-var-matrix\n");
 	PrintArray1D(ea);
 
-	d = DStat(tr,ea);
+	/*
+	 * for now, drop the last term as being the "noise" series
+	 *
+	 * ev and ea define the l = M-1 dimensional subspace
+	 *
+	 * need a way ro choose how many to exclude
+	 */
 
-	printf("D stat: %f\n",d);
+	/*
+	 * make trajectory matrix for test
+	 */
+	tr_test = TrajectoryMatrix(test_x,0,test_x->ydim,lags,Q);
+	if(tr_test == NULL) {
+		fprintf(stderr,"couldn't mae test trajectory matrix\n");
+		exit(1);
+	}
+
+	/*
+	 * trim rightmost column of eigenvectors
+	 */
+	l_ea = MakeArray2D(ea->ydim,ea->xdim-1);
+	if(l_ea == NULL) {
+		exit(1);
+	}
+
+	for(i=0; i < l_ea->xdim; i++) {
+		for(j=0; j < l_ea->ydim; j++) {
+			l_ea->data[i*l_ea->xdim+j] =
+				ea->data[i*ea->xdim+j];
+		}
+	}
+
+	d_base = DStat(tr_base,l_ea);
+	d_test = DStat(tr_test,l_ea);
+
+	printf("D stats: base: %f test: %f\n",d_base,d_test);
 
 	FreeArray2D(lcv);
-	FreeArray2D(tr);
+	FreeArray2D(tr_base);
+	FreeArray2D(tr_test);
+	FreeArray2D(base_x);
+	FreeArray2D(test_x);
+	FreeArray2D(x);
 	FreeArray1D(ev);
 	FreeArray2D(ea);
+	FreeArray2D(l_ea);
 
 	return(0);
 }
