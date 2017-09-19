@@ -78,9 +78,91 @@ Array2D *TrajectoryMatrix(Array1D *x, int start, int end, int m, int k)
 	return(tr);
 }
 
+double DStat(Array2D *trajectory, Array2D *eigenvectors)
+{
+	Array2D *ut;
+	Array2D *u_ut;
+	double d;
+	double d_i;
+	Array1D *x;
+	Array1D *xt;
+	Array2D *xt_x;
+	Array2D *xt_u_ut;
+	Array2D *xt_u_ut_x;
+	int i;
+	int j;
+
+	ut = TransposeArray2D(eigenvectors);
+	if(ut == NULL) {
+		return(-1);
+	}
+
+	u_ut = MultiplyArray2D(eigenvectors,ut);
+	if(u_ut == NULL) {
+		FreeArray2D(ut);
+		return(-1);
+	}
+
+	x = MakeArray1D(trajectory->ydim);
+	if(x == NULL) {
+		FreeArray2D(ut);
+		FreeArray2D(u_ut);
+		return(-1);
+	}
+
+	d = 0;
+	for(i=0; i < trajectory->ydim; i++) {
+		for(j=0; j < trajectory->xdim; j++) {
+			x->data[j] = trajectory->data[i*trajectory->xdim+j];
+		}
+		xt = TransposeArray1D(x);
+		if(xt == NULL) {
+			FreeArray2D(ut);
+			FreeArray2D(u_ut);
+			FreeArray1D(x);
+			return(-1);
+		}
+		xt_x = MultiplyArray2D(xt,x);
+		if(xt_x == NULL) {
+			FreeArray2D(ut);
+			FreeArray2D(u_ut);
+			FreeArray1D(x);
+			FreeArray1D(xt);
+			return(-1);
+		}
+		d_i = xt_x->data[0];
+		FreeArray2D(xt_x);
+		xt_u_ut = MultiplyArray2D(xt,u_ut);
+		if(xt_u_ut == NULL) {
+			FreeArray2D(ut);
+			FreeArray2D(u_ut);
+			FreeArray1D(x);
+			FreeArray1D(xt);
+			return(-1);
+		}
+		xt_u_ut_x = MultiplyArray2D(xt_u_ut,x);
+		if(xt_u_ut_x == NULL) {
+			FreeArray2D(ut);
+			FreeArray2D(u_ut);
+			FreeArray1D(x);
+			FreeArray1D(xt);
+			FreeArray2D(xt_u_ut);
+			return(-1);
+		}
+		d_i = d_i - xt_u_ut_x->data[0];
+		d += d_i;
+		FreeArray2D(xt_u_ut_x);
+		FreeArray2D(xt_u_ut);
+		FreeArray1D(xt);
+	}
+
+	return(d);
+}
+		
+
 #ifdef STANDALONE
 
-#define ARGS "x"
+#define ARGS "x:l:"
 char *Usage = "usage: ssa-cp -x xfile\n\
 \t-l lags\n";
 
@@ -98,6 +180,7 @@ int main(int argc, char *argv[])
 	Array2D *tr;
 	Array1D *x;
 	int lags;
+	double d;
 
 	lags = 1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
@@ -139,7 +222,7 @@ int main(int argc, char *argv[])
 	/*
 	 * for now, do whole matrix
 	 */
-	tr = TrajectoryMatrix(x,0,x->xdim,lags,x->xdim - lags);
+	tr = TrajectoryMatrix(x,0,x->ydim,lags,x->ydim - lags);
 	if(tr == NULL) {
 		fprintf(stderr, 
 			"couldn't create trajctory matrix for %d lags\n",
@@ -168,6 +251,10 @@ int main(int argc, char *argv[])
 	}
 	printf("eigen vectors of lag-co-var-matrix\n");
 	PrintArray1D(ea);
+
+	d = DStat(tr,ea);
+
+	printf("D stat: %f\n",d);
 
 	FreeArray2D(lcv);
 	FreeArray2D(tr);
