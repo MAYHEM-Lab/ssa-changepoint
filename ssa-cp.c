@@ -387,17 +387,34 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if(Q == 0) {
-		Q = x->ydim - lags;
+
+	start = 0;
+	if(N > 0) {
+		start = p - N;
+	} else if(N > p) {
+		fprintf(stderr,"p must be >= N\n");
+		exit(1);
+	} else {
+		N = p / 2; // no N => use halfway to starting point
+		start = p - N;
+		if(start < 0) {
+			fprintf(stderr,"start: %d, N: %d, p:%d\n",
+					start,N,p);
+			exit(1);
+		}
 	}
 
-	if(x->ydim > (p+Q)) {
+	if(Q == 0) {
+		Q = p+N;
+	}
+
+	if(x->ydim < Q) {
 		fprintf(stderr,"data has %d elements, but p+q is %d\n",
 			x->ydim,p+Q);
 		exit(1);
 	}
 
-	base_x = MakeArray1D(x->ydim - (p-1));	// base is everything up to p-1
+	base_x = MakeArray1D(N);	// base is everything up to p-1
 	if(base_x == NULL) {
 		exit(1);
 	}
@@ -407,23 +424,17 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	start = 0;
-	if((N > 0) && (N < p)) {
-		start = p - N;
-	} else if(N > p) {
-		fprintf(stderr,"p must be >= N\n");
-		exit(1);
-	} else {
-		N = p / 2; // no N => use halfway to starting point
-	}
 
-	for(i=start; i < p; i++) {
-		base_x->data[i] = x->data[i];
+	for(i=0; i < N; i++) {
+		base_x->data[i] = x->data[start+i];
 	}
+	printf("base range: %d %d\n",start,start+N);
 
-	for(i=p; i < Q; i++) {
-		test_x->data[i-p] = x->data[i];
+	for(i=start+N; i < Q; i++) {
+		test_x->data[i-(start+N)] = x->data[i];
 	}
+	printf("test range: %d %d\n",start+N,Q);
+	fflush(stdout);
 
 
 	/*
