@@ -231,13 +231,68 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 
 	return(d);
 }
-		
 
+
+double ComputeMu(Array2D *x, 
+		 int n, 
+		 int lags, 
+		 int K, 
+		 int Q, 
+		 Array1D *ea, 
+		 double cv) 
+{
+	Array2D *tr;
+	int i;
+	double mu;
+	double max_mu = -1000000.0;
+	double d;
+	double d_tilde;
+	double max_d_tilde;
+
+	tr = TrajectoryMatrix(x,0,n,lags,K);
+	if(tr == NULL) {
+		return(-1);
+	}
+	d = DStat(tr,ea);
+	if(d == -1.0) {
+		FreeArray2D(tr);
+		return(-1);
+	}
+	d_tilde = (1.0/(lags*Q)) * d;
+	if(d_tilde > max_mu) {
+		max_mu = mu;
+		max_d_tilde = d_tilde;
+	}
+
+	FreeArray2D(tr);
+
+	for(i=1; i < n; i++) {
+		if(((n - i)/2) < lags) {
+			break;
+		}
+		tr = TrajectoryMatrix(x,i,n,lags,K);
+		if(tr == NULL) {
+			return(-1);
+		}
+		d_tilde = (1.0/(lags*Q)) * d;
+		if((d_tilde > -1.0*cv) && (d_tilde < cv)) {
+			if(d_tilde > max_mu) {
+				max_mu = d_tilde;
+			}
+		}
+		FreeArray2D(tr);
+	}
+
+	return(max_mu);
+		
+}
 #ifdef STANDALONE
 
-#define ARGS "x:l:p:q:"
+#define ARGS "x:l:p:q:N:C:"
 char *Usage = "usage: ssa-cp -x xfile\n\
+\t-C critical value from N(0,1) for hyp. test\n\
 \t-l lags\n\
+\t-N window size\n\
 \t-p starting index of test matrix\n\
 \t-q ending index of test matrix\n";
 
@@ -265,9 +320,15 @@ int main(int argc, char *argv[])
 	int Q;
 	int i;
 	int j;
+	int N;
+	double cv;
+	int start;
+	double mu;
 
 	lags = 1;
 	Q = 0;
+	N = 0;
+	cv = 1.96;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
@@ -281,6 +342,12 @@ int main(int argc, char *argv[])
 				break;
 			case 'q':
 				Q = atoi(optarg);
+				break;
+			case 'N':
+				N = atoi(optarg);
+				break;
+			case 'C':
+				cv = atof(optarg);
 				break;
 			default:
 				fprintf(stderr,
@@ -340,7 +407,17 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	for(i=0; i < p; i++) {
+	start = 0;
+	if((N > 0) && (N < p)) {
+		start = p - N;
+	} else if(N > p) {
+		fprintf(stderr,"p must be >= N\n");
+		exit(1);
+	} else {
+		N = p / 2; // no N => use halfway to starting point
+	}
+
+	for(i=start; i < p; i++) {
 		base_x->data[i] = x->data[i];
 	}
 
@@ -426,10 +503,17 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	d_base = DStat(tr_base,l_ea);
-	d_test = DStat(tr_test,l_ea);
+	/*
+	 * these are d_tilde values due to division
+	 */
+	d_base = DStat(tr_base,l_ea) / (lags * Q);
+	d_test = DStat(tr_test,l_ea) / (lags * Q);
+
+	mu = ComputeMu(x,p-N,lags,N-lags,Q,l_ea,cv);
+
 
 	printf("D stats: base: %f test: %f\n",d_base,d_test);
+	printf("mu: %f\n",mu);
 
 	FreeArray2D(lcv);
 	FreeArray2D(tr_base);
