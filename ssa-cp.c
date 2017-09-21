@@ -292,124 +292,215 @@ double ComputeMu(Array2D *x,
 		
 }
 
-int ChangePointIndex(Array2D *x, int lags, int p, int q, Array1D *ea, double mu,
-		double cv)
+
+int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 {
-	int n;
+	Array1D *ev;
+	Array2D *ea;
+	Array2D *l_ea;
+	Array2D *tea;
+	Array2D *lcv;
+	Array2D *tr_base;
+	Array2D *tr_test;
+	Array2D *tr_before;
+	Array1D *base_x;
+	Array1D *test_x;
+	Array1D *before_x;
+	int start;
+	int end;
+	int p;
 	int i;
+	int j;
+	int N;
+	double mu;
 	double h;
 	double kappa;
 	double W_n;
 	double S_n;
 	double S_np1;
-	Array2D *test_tr;
-	Array1D *test_x;
+	double d;
 
-	/*
-	 * threshold value
-	 *
-	 * cv is 1-a upper tail quantile of standard normal
-	 */
-	h = ((2*cv) / (lags*q)) * sqrt((1.0/3.0) * q * ((3*lags*q) - (q*q) +1));
-	kappa = 1.0 / (3 * sqrt(lags * q));
-	if(mu == BAD_VAL) {
+	N = lags * K;
+	if(x->ydim - (N+(lags*q)) <= 0) {
+		fprintf(stderr,
+			"data has %d values but requires %d for sweep\n",
+			x->ydim,N+(lags*q));
+		fflush(stderr);
 		return(-1);
 	}
 
-	/*
-	 * sweep across trajectory matrix 
-	 */
-	for(n=p+1; n < x->ydim - (lags*q-1); n++) {
-		test_x = MakeArray1D(lags*q);
-		if(test_x == NULL) {
+	base_x = MakeArray1D(N);	// base is everything up to p-1
+	if(base_x == NULL) {
+		exit(1);
+	}
+
+	test_x = MakeArray1D(lags*q);		// test array is p through q
+	if(test_x == NULL) {
+		exit(1);
+	}
+
+	before_x = MakeArray1D(N);
+	if(before_x == NULL) {
+		fprintf(stderr,"no before array\n");
+		exit(1);
+	}
+
+	start = N;	// need at least N to compute first mu
+	h = ((2*cv) / (lags*q)) * sqrt((1.0/3.0) * q * ((3*lags*q) - (q*q) +1));
+	kappa = 1.0 / (3 * sqrt(lags * q));
+
+
+	for(start = N; start < (x->ydim - (N+(lags*q))); start++) {
+		for(i=0; i < N; i++) {
+			base_x->data[i] = x->data[start+i];
+		}
+
+		p = start + N;	// p starts immediately after the base array
+		end = p + (lags * q);
+		for(i=p; i < end; i++) {
+			test_x->data[i-p] = x->data[i];
+		}
+
+		tr_base = TrajectoryMatrix(base_x,0,lags,K);
+		if(tr_base == NULL) {
+			fprintf(stderr, 
+				"couldn't create trajctory matrix for %d lags\n",
+					lags);
 			exit(1);
 		}
-		for(i=0; i < lags*q; i++) {
-			test_x->data[i] = x->data[i+n];
+		lcv = LagVarArray2D(tr_base);
+		if(lcv == NULL) {
+			fprintf(stderr,
+				"couldn't compute lag-co-var matrix\n");
+			exit(1);
 		}
-		test_tr = TrajectoryMatrix(test_x,0,lags,q);
-		if(test_tr == NULL) {
-			fprintf(stderr,"ChangePointIndex failed to get tr\n");
-			fflush(stderr);
-			return(-1);
+		ev = EigenValueArray2D(lcv);
+		if(ev == NULL) {
+			fprintf(stderr,"couldn't get eigen values\n");
+			exit(1);
 		}
-		if(n == p) {
-			S_n = (DStat(test_tr,ea) / (lags * q)) / mu;
+
+		ea = EigenVectorArray2D(lcv);
+		if(ea == NULL) {
+			fprintf(stderr,"couldn't get eigen vectors\n");
+			exit(1);
+		}
+	#if 0
+		ea = TransposeArray2D(tea);
+		FreeArray2D(tea);
+		printf("before sort\n");
+		PrintArray1D(ev);
+		printf("\n");
+		printf("eigen vectors of lag-co-var-matrix\n");
+		PrintArray1D(ea);
+		printf("\n");
+	#endif
+
+		SortEigenVectors(ev,ea);
+
+		printf("eigen values of lag-co-var-matrix\n");
+		PrintArray1D(ev);
+		printf("\n");
+
+		printf("eigen vectors of lag-co-var-matrix\n");
+		PrintArray1D(ea);
+
+		/*
+		 * for now, drop the last term as being the "noise" series
+		 *
+		 * ev and ea define the l = M-1 dimensional subspace
+		 *
+		 * need a way ro choose how many to exclude
+		 */
+
+		/*
+		 * make trajectory matrix for test
+		 */
+		tr_test = TrajectoryMatrix(test_x,0,lags,q);
+		if(tr_test == NULL) {
+			fprintf(stderr,"couldn't mae test trajectory matrix\n");
+			exit(1);
+		}
+
+		/*
+		 * trim rightmost column of eigenvectors
+		 */
+		l_ea = MakeArray2D(ea->ydim,ea->xdim-1);
+//		l_ea = MakeArray2D(ea->ydim,1);
+		if(l_ea == NULL) {
+			exit(1);
+		}
+		for(i=0; i < l_ea->xdim; i++) {
+			for(j=0; j < l_ea->ydim; j++) {
+				l_ea->data[i*l_ea->xdim+j] =
+					ea->data[i*ea->xdim+j];
+			}
+		}
+
+
+		/*
+		 * now compute mu using N values immediately before start
+		 */
+
+		for(i=(start-N); i < start; i++) {
+			before_x->data[i-(start-N)] = x->data[i];
+		}
+
+		tr_before = TrajectoryMatrix(before_x,0,lags,K);
+		if(tr_before == NULL) {
+			fprintf(stderr,"no before_tr\n");
+			exit(1);
+		}
+
+		mu = ComputeMu(tr_before,lags,K,l_ea,cv);
+//		mu = ComputeMu(tr_base,lags,K,l_ea,cv);
+//		mu = ComputeMu(tr_test,lags,K,l_ea,cv);
+
+		FreeArray2D(tr_before);
+
+		printf("mu: %f\n",mu);
+		fflush(stdout);
+
+		if(start == N) { // we are computing S_1
+			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
-		} else {
-			S_np1 = (DStat(test_tr,ea) / (lags * q))/ mu;
-			W_n = W_n + 
-			  S_np1 -
-			  S_n -
-			  (kappa/sqrt(lags*q));
+		} else { // we have S_N from previous iteration
+			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu;
+			W_n = W_n +
+				S_np1 -
+				S_n -
+				(kappa/sqrt(lags*q));
 			if(W_n < 0) {
 				W_n = 0;
 			}
-			S_n = S_np1;
+			S_n = S_np1; // for next iteration
 		}
-printf("n: %d, h: %f, W_n: %f\n",n,h,W_n);
-		FreeArray2D(test_tr);
-		FreeArray1D(test_x);
+
+//		d = (DStat(tr_test,l_ea) / (lags*q)) / mu;
+		d = DStat(tr_test,l_ea) * mu;
+
+		FreeArray2D(lcv);
+		FreeArray2D(tr_base);
+		FreeArray2D(tr_test);
+		FreeArray1D(ev);
+		FreeArray2D(ea);
+		FreeArray2D(l_ea);
+printf("start: %d, h: %f, W_n: %f, d: %f, mu: %f\n",start,h,W_n,d,mu);
+fflush(stdout);
+#if 0
 		if(W_n > h) {
-			return(n);
+			FreeArray1D(base_x);
+			FreeArray1D(test_x);
+			FreeArray1D(before_x);
+			return(start);
 		}
+#endif
+
 	}
 
-	return(-1);
-}
-
-int OldChangePointIndex(Array2D *test_x, int lags, int q, Array1D *ea, double mu,
-		double cv)
-{
-	int n;
-	double h;
-	double kappa;
-	double W_n;
-	double S_n;
-	double S_np1;
-	Array2D *test_tr;
-
-	/*
-	 * threshold value
-	 *
-	 * cv is 1-a upper tail quantile of standard normal
-	 */
-	h = ((2*cv) / (lags*q)) * sqrt((1.0/3.0) * q * ((3*lags*q) - (q*q) +1));
-	kappa = 1.0 / (3 * sqrt(lags * q));
-	if(mu == BAD_VAL) {
-		return(-1);
-	}
-
-	/*
-	 * sweep across trajectory matrix 
-	 */
-	for(n=1; n < (lags*q-1); n++) {
-		test_tr = TrajectoryMatrix(test_x,n,lags,q);
-		if(test_tr == NULL) {
-			fprintf(stderr,"ChangePointIndex failed to get tr\n");
-			fflush(stderr);
-			return(-1);
-		}
-		if(n == 0) {
-			S_n = (DStat(test_tr,ea) / (lags * q)) / mu;
-			W_n = S_n;
-		} else {
-			S_np1 = (DStat(test_tr,ea) / (lags * q))/ mu;
-			W_n = W_n + 
-			  S_np1 -
-			  S_n -
-			  (kappa/sqrt(lags*q));
-			if(W_n < 0) {
-				W_n = 0;
-			}
-			S_n = S_np1;
-		}
-printf("n: %d, h: %f, W_n: %f\n",n,h,W_n);
-		FreeArray2D(test_tr);
-		if(W_n > h) {
-			return(n);
-		}
-	}
+	FreeArray2D(base_x);
+	FreeArray2D(test_x);
+	FreeArray2D(before_x);
 
 	return(-1);
 }
@@ -431,28 +522,16 @@ int main(int argc, char *argv[])
 	int size;
 	MIO *d_mio;
 	MIO *xmio;
-	Array1D *ev;
-	Array2D *ea;
-	Array2D *l_ea;
-	Array2D *lcv;
-	Array2D *tr_base;
-	Array2D *tr_test;
 	Array1D *x;
-	Array1D *base_x;
-	Array1D *test_x;
+	Array1D *x_sub;
 	int lags;
-	double d_base;
-	double d_test;
 	int p;
 	int q;
 	int i;
-	int j;
 	int K;
 	int N;
 	double cv;
-	int start;
-	int end;
-	double mu;
+	
 
 	p = 0;
 	q = 0;
@@ -498,36 +577,9 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if(p == 0) {
-		fprintf(stderr,"must specify starting point for test matrix\n");
-		fprintf(stderr,"%s",Usage);
-		exit(1);
-	}
-
 	if(q == 0) {
 		fprintf(stderr,"must specify sample size for test matrix\n");
 		fprintf(stderr,"%s",Usage);
-		exit(1);
-	}
-
-	/*
-	 * N is actual window size
-	 */
-	N = lags * K;
-
-	if(p < N) {
-		fprintf(stderr,"window size must have at least p elements ");
-		fprintf(stderr,"or base and test matrix overlap\n");
-		exit(1);
-	}
-
-	if((p - N) <= 0) {
-		fprintf(stderr,"p too small for base matrix size N\n");
-		exit(1);
-	}
-
-	if(lags > N/2) {
-		fprintf(stderr,"lags should be less than N / 2\n");
 		exit(1);
 	}
 
@@ -549,136 +601,28 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if((p+(lags*q)) > x->ydim) {
-		fprintf(stderr,"data has %d elements, but p+(lags*q) is %d\n",
-			x->ydim,p+(lags*q));
-		exit(1);
-	}
-
-	base_x = MakeArray1D(N);	// base is everything up to p-1
-	if(base_x == NULL) {
-		exit(1);
-	}
-
-	test_x = MakeArray1D(lags*q);		// test array is p through q
-	if(test_x == NULL) {
-		exit(1);
-	}
-
-
-	start = p - N;
-	for(i=0; i < N; i++) {
-		base_x->data[i] = x->data[start+i];
-	}
-
-	end = p + (lags * q);
-	for(i=p; i < end; i++) {
-		test_x->data[i-p] = x->data[i];
-	}
-
-
-	tr_base = TrajectoryMatrix(base_x,0,lags,K);
-	if(tr_base == NULL) {
-		fprintf(stderr, 
-			"couldn't create trajctory matrix for %d lags\n",
-				lags);
-		exit(1);
-	}
-	lcv = LagVarArray2D(tr_base);
-	if(lcv == NULL) {
-		fprintf(stderr,
-			"couldn't compute lag-co-var matrix\n");
-		exit(1);
-	}
-	ev = EigenValueArray2D(lcv);
-	if(ev == NULL) {
-		fprintf(stderr,"couldn't get eigen values\n");
-		exit(1);
-	}
-
-	ea = EigenVectorArray2D(lcv);
-	if(ea == NULL) {
-		fprintf(stderr,"couldn't get eigen vectors\n");
-		exit(1);
-	}
-#if 0
-	printf("before sort\n");
-	PrintArray1D(ev);
-	printf("\n");
-	printf("eigen vectors of lag-co-var-matrix\n");
-	PrintArray1D(ea);
-	printf("\n");
-#endif
-
-	SortEigenVectors(ev,ea);
-
-	printf("eigen values of lag-co-var-matrix\n");
-	PrintArray1D(ev);
-	printf("\n");
-
-	printf("eigen vectors of lag-co-var-matrix\n");
-	PrintArray1D(ea);
-
-	/*
-	 * for now, drop the last term as being the "noise" series
-	 *
-	 * ev and ea define the l = M-1 dimensional subspace
-	 *
-	 * need a way ro choose how many to exclude
-	 */
-
-	/*
-	 * make trajectory matrix for test
-	 */
-	tr_test = TrajectoryMatrix(test_x,0,lags,q);
-	if(tr_test == NULL) {
-		fprintf(stderr,"couldn't mae test trajectory matrix\n");
-		exit(1);
-	}
-
-	/*
-	 * trim rightmost column of eigenvectors
-	 */
-	l_ea = MakeArray2D(ea->ydim,ea->xdim-1);
-	if(l_ea == NULL) {
-		exit(1);
-	}
-
-	for(i=0; i < l_ea->xdim; i++) {
-		for(j=0; j < l_ea->ydim; j++) {
-			l_ea->data[i*l_ea->xdim+j] =
-				ea->data[i*ea->xdim+j];
+	if(p == 0) { // if p == 0, start from beginning of x
+		i = ChangePointSweep(x,lags,K,q,cv);
+	} else {
+		x_sub = MakeArray1D(x->ydim - p);
+		if(x_sub == NULL) {
+			exit(1);
+		}
+		for(i=p; i < x->ydim; i++) {
+			x_sub->data[i-p] = x->data[i];
+		}
+		i = ChangePointSweep(x_sub,lags,K,q,cv);
+		FreeArray1D(x_sub);
+		if(i != -1) {
+			i = i + p; // quote i from original series
 		}
 	}
 
-	/*
-	 * these are d_tilde values due to division
-	 */
-	d_base = DStat(tr_base,l_ea) / (lags * q);
-	d_test = DStat(tr_test,l_ea) / (lags * q);
-
-	mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-
-
-	printf("D stats: base: %f test: %f\n",d_base,d_test);
-	printf("mu: %f\n",mu);
-
-	i = ChangePointIndex(x,lags,p,q,l_ea,mu,cv);
-	if(i != -1) {
-		printf("change point found at index %d\n",i);
-	} else {
+	if(i == -1) {
 		printf("no change point found\n");
+	} else {
+		printf("change point found at %d\n",i);
 	}
-
-	FreeArray2D(lcv);
-	FreeArray2D(tr_base);
-	FreeArray2D(tr_test);
-	FreeArray2D(base_x);
-	FreeArray2D(test_x);
-	FreeArray2D(x);
-	FreeArray1D(ev);
-	FreeArray2D(ea);
-	FreeArray2D(l_ea);
 
 	return(0);
 }
