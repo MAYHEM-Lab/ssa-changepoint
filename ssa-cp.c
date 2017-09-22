@@ -217,9 +217,6 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 		FreeArray1D(xt);
 	}
 
-	FreeArray2D(ut);
-	FreeArray2D(u_ut);
-	FreeArray2D(x);
 	return(d);
 }
 
@@ -314,7 +311,6 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 	int p;
 	int i;
 	int j;
-	int x_n;
 	int N;
 	double mu;
 	double h;
@@ -355,22 +351,14 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 
 
 	for(start = N; start < (x->ydim - (N+(lags*q))); start++) {
-		for(i=0; i < lags; i++) {
-			x_n = start+i;
-			for(j=0; j < K; j++) {
-				base_x->data[i*base_x->xdim+j] = 
-					x->data[x_n];
-				x_n++;
-			}
+		for(i=0; i < N; i++) {
+			base_x->data[i] = x->data[start+i];
 		}
 
 		p = start + N;	// p starts immediately after the base array
-		for(i=0; i < lags; i++) {
-			x_n = p+i;
-			for(j=0; j < q; j++) {
-				test_x->data[i*test_x->xdim+j] = x->data[x_n];
-				x_n++;
-			}
+		end = p + (lags * q);
+		for(i=p; i < end; i++) {
+			test_x->data[i-p] = x->data[i];
 		}
 
 		tr_base = TrajectoryMatrix(base_x,0,lags,K);
@@ -464,9 +452,9 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 			exit(1);
 		}
 
-//		mu = ComputeMu(tr_before,lags,K,l_ea,cv);
+		mu = ComputeMu(tr_before,lags,K,l_ea,cv);
 //		mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-		mu = ComputeMu(tr_test,lags,K,l_ea,cv);
+//		mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 
 		FreeArray2D(tr_before);
 
@@ -489,7 +477,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		}
 
 //		d = (DStat(tr_test,l_ea) / (lags*q)) / mu;
-		d = DStat(tr_test,l_ea) / (lags*q);
+		d = DStat(tr_test,l_ea) * mu;
 
 		FreeArray2D(lcv);
 		FreeArray2D(tr_base);
@@ -497,7 +485,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		FreeArray1D(ev);
 		FreeArray2D(ea);
 		FreeArray2D(l_ea);
-printf("start: %d, target: %d, h: %f, W_n: %f, d: %f mu: %f\n",start,start+N,h,W_n,d,mu);
+printf("start: %d, h: %f, W_n: %f, d: %f, mu: %f\n",start,h,W_n,d,mu);
 fflush(stdout);
 #if 0
 		if(W_n > h) {
