@@ -324,7 +324,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 	double S_np1;
 	double d;
 
-	N = lags * K;
+	N = lags + K;
 	if(x->ydim - (N+(lags*q)) <= 0) {
 		fprintf(stderr,
 			"data has %d values but requires %d for sweep\n",
@@ -338,7 +338,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		exit(1);
 	}
 
-	test_x = MakeArray1D(lags*q);		// test array is p through q
+	test_x = MakeArray1D(lags+q);		// test array is p through q
 	if(test_x == NULL) {
 		exit(1);
 	}
@@ -355,22 +355,13 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 
 
 	for(start = N; start < (x->ydim - (N+(lags*q))); start++) {
-		for(i=0; i < lags; i++) {
-			x_n = start+i;
-			for(j=0; j < K; j++) {
-				base_x->data[i*base_x->xdim+j] = 
-					x->data[x_n];
-				x_n++;
-			}
+		for(i=0; i < N; i++) {
+			base_x->data[i] = x->data[start + i]
 		}
 
 		p = start + N;	// p starts immediately after the base array
-		for(i=0; i < lags; i++) {
-			x_n = p+i;
-			for(j=0; j < q; j++) {
-				test_x->data[i*test_x->xdim+j] = x->data[x_n];
-				x_n++;
-			}
+		for(i=0; i < lags+q; i++) {
+			test_x->data[i] = x->data[p+i];
 		}
 
 		tr_base = TrajectoryMatrix(base_x,0,lags,K);
