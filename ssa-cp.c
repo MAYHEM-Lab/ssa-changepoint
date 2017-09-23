@@ -298,7 +298,8 @@ double ComputeMu(Array2D *x,
 }
 
 
-int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
+int ChangePointSweep(Array2D *x, int lags, int K, 
+		int q, double cv, int signal)
 {
 	Array1D *ev;
 	Array2D *ea;
@@ -394,7 +395,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		PrintArray1D(ea);
 
 		/*
-		 * for now, drop the last term as being the "noise" series
+		 * for now, drop the last term as being the "signal" series
 		 *
 		 * ev and ea define the l = M-1 dimensional subspace
 		 *
@@ -413,8 +414,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		/*
 		 * trim rightmost column of eigenvectors
 		 */
-//		l_ea = MakeArray2D(ea->ydim,ea->xdim-1);
-		l_ea = MakeArray2D(ea->ydim,1);
+		l_ea = MakeArray2D(ea->ydim,signal);
 		if(l_ea == NULL) {
 			exit(1);
 		}
@@ -463,8 +463,9 @@ fflush(stdout);
 }
 #ifdef STANDALONE
 
-#define ARGS "x:l:p:q:K:C:"
+#define ARGS "x:l:p:q:K:C:e:"
 char *Usage = "usage: ssa-cp -x xfile\n\
+\t-e number of signal series\n\
 \t-C critical value from N(0,1) for hyp. test\n\
 \t-l lags\n\
 \t-K number of samples in base matrix\n\
@@ -488,16 +489,21 @@ int main(int argc, char *argv[])
 	int K;
 	int N;
 	double cv;
+	int signal;
 	
 
 	p = 0;
 	q = 0;
 	K = 0;
 	cv = 1.96;
+	signal = 1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
 				strncpy(Xfile,optarg,sizeof(Xfile));
+				break;
+			case 'e':
+				signal = atoi(optarg);
 				break;
 			case 'l':
 				lags = atoi(optarg);
@@ -559,7 +565,7 @@ int main(int argc, char *argv[])
 	}
 
 	if(p == 0) { // if p == 0, start from beginning of x
-		i = ChangePointSweep(x,lags,K,q,cv);
+		i = ChangePointSweep(x,lags,K,q,cv,signal);
 	} else {
 		x_sub = MakeArray1D(x->ydim - p);
 		if(x_sub == NULL) {
@@ -568,7 +574,7 @@ int main(int argc, char *argv[])
 		for(i=p; i < x->ydim; i++) {
 			x_sub->data[i-p] = x->data[i];
 		}
-		i = ChangePointSweep(x_sub,lags,K,q,cv);
+		i = ChangePointSweep(x_sub,lags,K,q,cv,signal);
 		FreeArray1D(x_sub);
 		if(i != -1) {
 			i = i + p; // quote i from original series
