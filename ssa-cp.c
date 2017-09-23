@@ -88,6 +88,7 @@ int SortEigenVectors(Array1D *ev, Array2D *ea)
 		RBDestroyD(map);
 		return(-1);
 	}
+//	sea = NormalizeColsArray2D(ea);
 
 	sev = MakeArray1D(ev->ydim);
 	if(sev == NULL) {
@@ -95,6 +96,7 @@ int SortEigenVectors(Array1D *ev, Array2D *ea)
 		FreeArray2D(sea);
 		return(-1);
 	}
+
 
 	for(i=0; i < ev->ydim; i++) {
 		RBInsertD(map,ev->data[i],(Hval)i);
@@ -308,7 +310,6 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 	Array2D *tr_before;
 	Array1D *base_x;
 	Array1D *test_x;
-	Array1D *before_x;
 	int start;
 	int end;
 	int p;
@@ -326,7 +327,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 	double d;
 
 	N = lags + K;
-	if(x->ydim - (N+(lags*q)) <= 0) {
+	if(x->ydim - (N+(lags+q)) <= 0) {
 		fprintf(stderr,
 			"data has %d values but requires %d for sweep\n",
 			x->ydim,N+(lags*q));
@@ -344,18 +345,12 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		exit(1);
 	}
 
-	before_x = MakeArray1D(N);
-	if(before_x == NULL) {
-		fprintf(stderr,"no before array\n");
-		exit(1);
-	}
-
 	start = N;	// need at least N to compute first mu
 	h = ((2*cv) / (lags*q)) * sqrt((1.0/3.0) * q * ((3*lags*q) - (q*q) +1));
 	kappa = 1.0 / (3 * sqrt(lags * q));
 
 
-	for(start = N; start < (x->ydim - (N+(lags*q))); start++) {
+	for(start = 0; start < (x->ydim - (N+(lags+q))); start++) {
 		for(i=0; i < N; i++) {
 			base_x->data[i] = x->data[start + i];
 		}
@@ -389,17 +384,6 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 			fprintf(stderr,"couldn't get eigen vectors\n");
 			exit(1);
 		}
-	#if 0
-		ea = TransposeArray2D(tea);
-		FreeArray2D(tea);
-		printf("before sort\n");
-		PrintArray1D(ev);
-		printf("\n");
-		printf("eigen vectors of lag-co-var-matrix\n");
-		PrintArray1D(ea);
-		printf("\n");
-	#endif
-
 		SortEigenVectors(ev,ea);
 
 		printf("eigen values of lag-co-var-matrix\n");
@@ -429,8 +413,8 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		/*
 		 * trim rightmost column of eigenvectors
 		 */
-		l_ea = MakeArray2D(ea->ydim,ea->xdim-1);
-//		l_ea = MakeArray2D(ea->ydim,1);
+//		l_ea = MakeArray2D(ea->ydim,ea->xdim-1);
+		l_ea = MakeArray2D(ea->ydim,1);
 		if(l_ea == NULL) {
 			exit(1);
 		}
@@ -442,30 +426,8 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		}
 
 
-		/*
-		 * now compute mu using N values immediately before start
-		 */
-
-		for(i=(start-N); i < start; i++) {
-			before_x->data[i-(start-N)] = x->data[i];
-		}
-
-		tr_before = TrajectoryMatrix(before_x,0,lags,K);
-		if(tr_before == NULL) {
-			fprintf(stderr,"no before_tr\n");
-			exit(1);
-		}
-
-
-		FreeArray2D(tr_before);
-
-		printf("mu: %f\n",mu);
-		fflush(stdout);
-
 		if(start == N) { // we are computing S_1
-//			mu = ComputeMu(tr_before,lags,K,l_ea,cv);
 			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-//			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 		} else { // we have S_N from previous iteration
@@ -482,8 +444,6 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 			mu = mu_np1;
 		}
 
-//		d = (DStat(tr_test,l_ea) / (lags*q)) / mu;
-		d = DStat(tr_test,l_ea) / (lags*q);
 
 		FreeArray2D(lcv);
 		FreeArray2D(tr_base);
@@ -493,20 +453,11 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		FreeArray2D(l_ea);
 printf("start: %d, target: %d, h: %f, W_n: %f, d: %f mu: %f\n",start,start+N,h,W_n,d,mu);
 fflush(stdout);
-#if 0
-		if(W_n > h) {
-			FreeArray1D(base_x);
-			FreeArray1D(test_x);
-			FreeArray1D(before_x);
-			return(start);
-		}
-#endif
 
 	}
 
 	FreeArray2D(base_x);
 	FreeArray2D(test_x);
-	FreeArray2D(before_x);
 
 	return(-1);
 }
