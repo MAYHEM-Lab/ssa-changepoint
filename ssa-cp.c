@@ -317,6 +317,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 	int x_n;
 	int N;
 	double mu;
+	double mu_np1;
 	double h;
 	double kappa;
 	double W_n;
@@ -356,7 +357,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 
 	for(start = N; start < (x->ydim - (N+(lags*q))); start++) {
 		for(i=0; i < N; i++) {
-			base_x->data[i] = x->data[start + i]
+			base_x->data[i] = x->data[start + i];
 		}
 
 		p = start + N;	// p starts immediately after the base array
@@ -455,9 +456,6 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 			exit(1);
 		}
 
-//		mu = ComputeMu(tr_before,lags,K,l_ea,cv);
-//		mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-		mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 
 		FreeArray2D(tr_before);
 
@@ -465,10 +463,14 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 		fflush(stdout);
 
 		if(start == N) { // we are computing S_1
+//			mu = ComputeMu(tr_before,lags,K,l_ea,cv);
+			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
+//			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 		} else { // we have S_N from previous iteration
-			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu;
+			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
+			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu_np1;
 			W_n = W_n +
 				S_np1 -
 				S_n -
@@ -477,6 +479,7 @@ int ChangePointSweep(Array2D *x, int lags, int K, int q, double cv)
 				W_n = 0;
 			}
 			S_n = S_np1; // for next iteration
+			mu = mu_np1;
 		}
 
 //		d = (DStat(tr_test,l_ea) / (lags*q)) / mu;
