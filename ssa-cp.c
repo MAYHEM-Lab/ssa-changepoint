@@ -229,7 +229,7 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 /*
  * x is data matrix for test_matrix
  */
-double ComputeMu(Array2D *x, 
+double NewComputeMu(Array2D *x, 
 		 int start,
 		 int lags, 
 		 int q,
@@ -306,7 +306,7 @@ double ComputeMu(Array2D *x,
 		
 }
 
-double OldComputeMu(Array2D *x, 
+double ComputeMu(Array2D *x, 
 		 int lags, 
 		 int q,
 		 Array1D *ea, 
@@ -402,6 +402,7 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 	double h;
 	double kappa;
 	double W_n;
+	double W_np1;
 	double S_n;
 	double S_np1;
 	double d;
@@ -520,26 +521,30 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 
 		if(start == N) { // we are computing S_1
 //			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
-//			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
+			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
 //			mu = ComputeMu(tr_before,lags,K,l_ea,cv);
-			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
+//			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		} else { // we have S_N from previous iteration
 //			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
-//			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
+			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(tr_before,lags,K,l_ea,cv);
-			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
+//			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu_np1;
-			W_n = W_n +
+			W_np1 = W_n +
 				S_np1 -
 				S_n -
 				(kappa/sqrt(lags*q));
-			if(W_n < 0) {
-				W_n = 0;
+			if(W_np1 < 0) {
+				W_np1 = 0;
 			}
+printf("S_n: %f S_np1: %f mu: %f m_np1: %f kappa: %f\n",S_n,S_np1,mu,mu_np1,kappa);
+fflush(stdout);
+
 			S_n = S_np1; // for next iteration
+			W_n = W_np1;
 			mu = mu_np1;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		}
