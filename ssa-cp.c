@@ -281,8 +281,12 @@ double ComputeMu(Array2D *x,
 			return(max_mu);
 		}
 		d_tilde = (1.0/(lags*q)) * d;
+#if 0
 		if((d_tilde < cv) && 
 		   (d_tilde > (-1.0*cv)) &&
+		   (d_tilde > max_mu)) {
+#endif
+		if((d_tilde < cv) &&
 		   (d_tilde > max_mu)) {
 			max_mu = d_tilde;
 			max_m = m;
