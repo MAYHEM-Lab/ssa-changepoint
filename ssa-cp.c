@@ -68,6 +68,7 @@ Array2D *TrajectoryMatrix(Array1D *x, int start, int m, int k)
 	return(tr);
 }
 
+
 int SortEigenVectors(Array1D *ev, Array2D *ea)
 {
 	RB *map;
@@ -357,7 +358,7 @@ double ComputeMu(Array2D *x,
 				}
 				d_tilde = (1.0/(lags*q)) * d;
 				if((d_tilde < cv) && 
-				   (d_tilde > (-1.0*cv)) &&
+//				   (d_tilde > (-1.0*cv)) &&
 				   (d_tilde > max_mu)) {
 					max_mu = d_tilde;
 					max_m = m;
