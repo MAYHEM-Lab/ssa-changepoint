@@ -527,17 +527,17 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 
 
 		if(start == N) { // we are computing S_1
-//			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
+			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 //			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-			mu = ComputeMu(tr_after,lags,K,l_ea,cv);
+//			mu = ComputeMu(tr_after,lags,K,l_ea,cv);
 //			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		} else { // we have S_N from previous iteration
-//			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
+			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
-			mu_np1 = ComputeMu(tr_after,lags,K,l_ea,cv);
+//			mu_np1 = ComputeMu(tr_after,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu_np1;
 			W_np1 = W_n +
