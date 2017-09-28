@@ -225,6 +225,7 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 	FreeArray2D(ut);
 	FreeArray2D(u_ut);
 	FreeArray2D(x);
+//	return(fabs(d));
 	return(d);
 }
 
@@ -380,7 +381,7 @@ double ComputeMu(Array2D *x,
 		
 }
 
-int ChangePointSweep(Array2D *x, int lags, int K, 
+int ChangePointSweep(Array2D *x, int lags, int N, 
 		int q, double cv, int signal)
 {
 	Array1D *ev;
@@ -390,17 +391,17 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 	Array2D *lcv;
 	Array2D *tr_base;
 	Array2D *tr_test;
-	Array2D *tr_before;
+	Array2D *tr_after;
 	Array1D *base_x;
 	Array1D *test_x;
-	Array1D *before_x;
+	Array1D *after_x;
 	int start;
 	int end;
 	int p;
 	int i;
 	int j;
 	int x_n;
-	int N;
+	int K;
 	double mu;
 	double mu_np1;
 	double h;
@@ -411,7 +412,8 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 	double S_np1;
 	double d;
 
-	N = lags + K;
+
+	K = N - lags + 1;
 	if(x->ydim - (N+(lags+q)) <= 0) {
 		fprintf(stderr,
 			"data has %d values but requires %d for sweep\n",
@@ -429,6 +431,10 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 	if(test_x == NULL) {
 		exit(1);
 	}
+	after_x = MakeArray1D(N);
+	if(after_x == NULL) {
+		exit(1);
+	}
 
 	h = ((2*cv) / (lags*q)) * sqrt((1.0/3.0) * q * ((3*lags*q) - (q*q) +1));
 	kappa = 1.0 / (3 * sqrt(lags * q));
@@ -436,14 +442,6 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 
 	for(start = 0; start < (x->ydim - (N+(lags+q))); start++) {
 
-		before_x = MakeArray1D(start+N+lags+q);
-		if(before_x == NULL) {
-			exit(1);
-		}
-
-		for(i=0; i < start+N+lags+q; i++) {
-			before_x->data[i] = x->data[i];
-		}
 		for(i=0; i < N; i++) {
 			base_x->data[i] = x->data[start + i];
 		}
@@ -451,6 +449,10 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 		p = start + N;	// p starts immediately after the base array
 		for(i=0; i < lags+q; i++) {
 			test_x->data[i] = x->data[p+i];
+		}
+
+		for(i=0; i < N; i++) {
+			after_x->data[i] = x->data[p+i];
 		}
 
 		tr_base = TrajectoryMatrix(base_x,0,lags,K);
@@ -518,24 +520,24 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 			}
 		}
 
-		tr_before = TrajectoryMatrix(before_x,0,lags,K);
-		if(tr_before == NULL) {
+		tr_after = TrajectoryMatrix(after_x,0,lags,K);
+		if(tr_after == NULL) {
 			exit(1);
 		}
 
 
 		if(start == N) { // we are computing S_1
 //			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
-			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-//			mu = ComputeMu(tr_before,lags,K,l_ea,cv);
+//			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
+			mu = ComputeMu(tr_after,lags,K,l_ea,cv);
 //			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		} else { // we have S_N from previous iteration
 //			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
-			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
-//			mu_np1 = ComputeMu(tr_before,lags,K,l_ea,cv);
+//			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
+			mu_np1 = ComputeMu(tr_after,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu_np1;
 			W_np1 = W_n +
@@ -561,13 +563,13 @@ fflush(stdout);
 		FreeArray1D(ev);
 		FreeArray2D(ea);
 		FreeArray2D(l_ea);
-		FreeArray1D(before_x);
-		FreeArray2D(tr_before);
+		FreeArray2D(tr_after);
 printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f\n",start,start+q+lags,h,W_n,d,S_n,mu);
 fflush(stdout);
 
 	}
 
+	FreeArray1D(after_x);
 	FreeArray2D(base_x);
 	FreeArray2D(test_x);
 
@@ -575,12 +577,12 @@ fflush(stdout);
 }
 #ifdef STANDALONE
 
-#define ARGS "x:l:p:q:K:C:e:"
+#define ARGS "x:l:p:q:N:C:e:"
 char *Usage = "usage: ssa-cp -x xfile\n\
 \t-e number of signal series\n\
 \t-C critical value from N(0,1) for hyp. test\n\
 \t-l lags\n\
-\t-K number of samples in base matrix\n\
+\t-N number of time series elements in base matrix\n\
 \t-p starting index of test matrix\n\
 \t-q number of samples (columns) of of test matrix\n";
 
@@ -598,15 +600,14 @@ int main(int argc, char *argv[])
 	int p;
 	int q;
 	int i;
-	int K;
 	int N;
 	double cv;
 	int signal;
 	
 
+	N = 0;
 	p = 0;
 	q = 0;
-	K = 0;
 	cv = 1.96;
 	signal = 1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
@@ -626,8 +627,8 @@ int main(int argc, char *argv[])
 			case 'q':
 				q = atoi(optarg);
 				break;
-			case 'K':
-				K = atoi(optarg);
+			case 'N':
+				N = atoi(optarg);
 				break;
 			case 'C':
 				cv = atof(optarg);
@@ -646,7 +647,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if(K == 0) {
+	if(N == 0) {
 		fprintf(stderr,"must enter window size\n");
 		fprintf(stderr,"%s",Usage);
 		exit(1);
@@ -677,7 +678,7 @@ int main(int argc, char *argv[])
 	}
 
 	if(p == 0) { // if p == 0, start from beginning of x
-		i = ChangePointSweep(x,lags,K,q,cv,signal);
+		i = ChangePointSweep(x,lags,N,q,cv,signal);
 	} else {
 		x_sub = MakeArray1D(x->ydim - p);
 		if(x_sub == NULL) {
@@ -686,7 +687,7 @@ int main(int argc, char *argv[])
 		for(i=p; i < x->ydim; i++) {
 			x_sub->data[i-p] = x->data[i];
 		}
-		i = ChangePointSweep(x_sub,lags,K,q,cv,signal);
+		i = ChangePointSweep(x_sub,lags,N,q,cv,signal);
 		FreeArray1D(x_sub);
 		if(i != -1) {
 			i = i + p; // quote i from original series
