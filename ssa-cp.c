@@ -230,7 +230,7 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 /*
  * x is data matrix for test_matrix
  */
-double NewComputeMu(Array2D *x, 
+double ComputeMu(Array2D *x, 
 		 int start,
 		 int lags, 
 		 int q,
@@ -307,7 +307,7 @@ double NewComputeMu(Array2D *x,
 		
 }
 
-double ComputeMu(Array2D *x, 
+double OldComputeMu(Array2D *x, 
 		 int lags, 
 		 int q,
 		 Array1D *ea, 
@@ -361,7 +361,8 @@ double ComputeMu(Array2D *x,
 //				   (d_tilde > (-1.0*cv)) &&
 				   (d_tilde > max_mu)) {
 					max_mu = d_tilde;
-					max_m = m;
+//					max_mu = d;
+//					max_m = m;
 					max_s = s;
 					FreeArray2D(sub);
 					return(max_mu);
@@ -431,7 +432,7 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 	kappa = 1.0 / (3 * sqrt(lags * q));
 
 
-	for(start = 0; start < (x->ydim - (N+(lags+q))); start++) {
+	for(start = 2*N; start < (x->ydim - (N+(lags+q))); start++) {
 
 		before_x = MakeArray1D(start+N+lags+q);
 		if(before_x == NULL) {
@@ -522,17 +523,17 @@ int ChangePointSweep(Array2D *x, int lags, int K,
 
 		if(start == N) { // we are computing S_1
 //			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
-			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
+//			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
 //			mu = ComputeMu(tr_before,lags,K,l_ea,cv);
-//			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
+			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		} else { // we have S_N from previous iteration
 //			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
-			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
+//			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(tr_before,lags,K,l_ea,cv);
-//			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
+			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu_np1;
 			W_np1 = W_n +
 				S_np1 -
