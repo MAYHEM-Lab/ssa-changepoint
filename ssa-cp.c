@@ -391,10 +391,8 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	Array2D *lcv;
 	Array2D *tr_base;
 	Array2D *tr_test;
-	Array2D *tr_after;
 	Array1D *base_x;
 	Array1D *test_x;
-	Array1D *after_x;
 	int start;
 	int end;
 	int p;
@@ -403,6 +401,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	int x_n;
 	int K;
 	double mu;
+	double t_mu;
 	double mu_np1;
 	double h;
 	double kappa;
@@ -431,15 +430,12 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	if(test_x == NULL) {
 		exit(1);
 	}
-	after_x = MakeArray1D(N);
-	if(after_x == NULL) {
-		exit(1);
-	}
 
 	h = ((2*cv) / (lags*q)) * sqrt((1.0/3.0) * q * ((3*lags*q) - (q*q) +1));
 	kappa = 1.0 / (3 * sqrt(lags * q));
 
 
+	mu = 1000000;
 	for(start = 0; start < (x->ydim - (N+(lags+q))); start++) {
 
 		for(i=0; i < N; i++) {
@@ -451,10 +447,6 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			test_x->data[i] = x->data[p+i];
 		}
 
-		for(i=0; i < N; i++) {
-			after_x->data[i] = x->data[p+i];
-		}
-
 		tr_base = TrajectoryMatrix(base_x,0,lags,K);
 		if(tr_base == NULL) {
 			fprintf(stderr, 
@@ -462,6 +454,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 					lags);
 			exit(1);
 		}
+
 
 		lcv = LagVarArray2D(tr_base);
 		if(lcv == NULL) {
@@ -520,24 +513,28 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			}
 		}
 
-		tr_after = TrajectoryMatrix(after_x,0,lags,K);
-		if(tr_after == NULL) {
-			exit(1);
+		t_mu = DStat(tr_test,l_ea) / (lags*q);
+		if((fabs(t_mu) > cv) && (mu == 1000000)) {
+			goto skipit;
+		}
+
+		if(fabs(t_mu) < cv) {
+			mu = fabs(t_mu);
+			mu = t_mu;
 		}
 
 
 		if(start == N) { // we are computing S_1
-			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
+//			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 //			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
-//			mu = ComputeMu(tr_after,lags,K,l_ea,cv);
 //			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		} else { // we have S_N from previous iteration
-			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
+			mu_np1 = mu;
+//			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(tr_base,lags,K,l_ea,cv);
-//			mu_np1 = ComputeMu(tr_after,lags,K,l_ea,cv);
 //			mu_np1 = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_np1 = (DStat(tr_test,l_ea)/(lags*q))/mu_np1;
 			W_np1 = W_n +
@@ -557,19 +554,18 @@ fflush(stdout);
 		}
 
 
+printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f\n",start,start+q+lags,h,W_n,d,S_n,mu);
+fflush(stdout);
+skipit:
 		FreeArray2D(lcv);
 		FreeArray2D(tr_base);
 		FreeArray2D(tr_test);
 		FreeArray1D(ev);
 		FreeArray2D(ea);
 		FreeArray2D(l_ea);
-		FreeArray2D(tr_after);
-printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f\n",start,start+q+lags,h,W_n,d,S_n,mu);
-fflush(stdout);
 
 	}
 
-	FreeArray1D(after_x);
 	FreeArray2D(base_x);
 	FreeArray2D(test_x);
 
