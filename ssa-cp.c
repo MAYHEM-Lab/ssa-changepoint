@@ -11,6 +11,33 @@
 
 #define BAD_VAL (-1000000.0)
 
+Array2D *UnitizeArray2D(Array2D *u)
+{
+	int i;
+	int j;
+	Array2D *on_u;
+	double acc;
+
+	on_u = MakeArray2D(u->ydim,u->xdim);
+	if(on_u == NULL) {
+		return(NULL);
+	}
+
+	for(j=0; j < u->xdim; j++) {
+		acc = 0;
+		for(i=0; i < u->ydim; i++) {
+			acc += (u->data[i*u->xdim+j] *
+				u->data[i*u->xdim+j]);
+		}
+		for(i=0; i < on_u->ydim; i++) {
+			on_u->data[i*on_u->xdim+j] =
+			  u->data[i*u->xdim+j] / sqrt(acc);
+		}
+	}
+
+	return(on_u);
+}
+
 Array2D *LagVarArray2D(Array2D *x)
 {
 	/*
@@ -140,7 +167,6 @@ int SortEigenVectors(Array1D *ev, Array2D *ea)
 
 	return(1);
 }
-	
 
 double DStat(Array2D *trajectory, Array2D *eigenvectors)
 {
@@ -228,7 +254,6 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 //	return(fabs(d));
 	return(d);
 }
-
 
 /*
  * x is data matrix for test_matrix
@@ -387,7 +412,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	Array1D *ev;
 	Array2D *ea;
 	Array2D *l_ea;
-	Array2D *tea;
+	Array2D *t_ea;
 	Array2D *lcv;
 	Array2D *tr_base;
 	Array2D *tr_test;
@@ -410,6 +435,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	double S_n;
 	double S_np1;
 	double d;
+	int first_mu;
 
 
 	K = N - lags + 1;
@@ -435,7 +461,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	kappa = 1.0 / (3 * sqrt(lags * q));
 
 
-	mu = 1000000;
+	first_mu = 1;
 	for(start = 0; start < (x->ydim - (N+(lags+q))); start++) {
 
 		for(i=0; i < N; i++) {
@@ -443,7 +469,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 		}
 
 		p = start + N;	// p starts immediately after the base array
-		for(i=0; i < lags+q; i++) {
+		for(i=0; i < (lags+q); i++) {
 			test_x->data[i] = x->data[p+i];
 		}
 
@@ -468,11 +494,19 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			exit(1);
 		}
 
-		ea = EigenVectorArray2D(lcv);
-		if(ea == NULL) {
+
+		t_ea = EigenVectorArray2D(lcv);
+		if(t_ea == NULL) {
 			fprintf(stderr,"couldn't get eigen vectors\n");
 			exit(1);
 		}
+
+		ea = UnitizeArray2D(t_ea);
+		if(ea == NULL) {
+			fprintf(stderr,"couldn't unitize eigen vectors\n");
+			exit(1);
+		}
+		FreeArray2D(t_ea);
 		SortEigenVectors(ev,ea);
 
 		printf("eigen values of lag-co-var-matrix\n");
@@ -506,31 +540,31 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 		if(l_ea == NULL) {
 			exit(1);
 		}
-		for(i=0; i < l_ea->xdim; i++) {
-			for(j=0; j < l_ea->ydim; j++) {
+		for(i=0; i < l_ea->ydim; i++) {
+			for(j=0; j < l_ea->xdim; j++) {
 				l_ea->data[i*l_ea->xdim+j] =
 					ea->data[i*ea->xdim+j];
 			}
 		}
 
-		t_mu = DStat(tr_test,l_ea) / (lags*q);
-		if((fabs(t_mu) > cv) && (mu == 1000000)) {
+		t_mu = DStat(tr_base,l_ea) / (lags * q);
+		if((t_mu > cv) && (first_mu == 1)) {
 			goto skipit;
 		}
 
-		if(fabs(t_mu) < cv) {
-			mu = fabs(t_mu);
+		if(t_mu < cv) {
 			mu = t_mu;
 		}
 
 
-		if(start == N) { // we are computing S_1
+		if(first_mu == 1) { // we are computing S_1
 //			mu = ComputeMu(tr_test,lags,K,l_ea,cv);
 //			mu = ComputeMu(tr_base,lags,K,l_ea,cv);
 //			mu = ComputeMu(x,start+N,lags,K,l_ea,cv);
 			S_n = (DStat(tr_test,l_ea)/(lags*q))/mu;
 			W_n = S_n;
 			d = DStat(tr_test,l_ea) / (lags*q);
+			first_mu = 0;
 		} else { // we have S_N from previous iteration
 			mu_np1 = mu;
 //			mu_np1 = ComputeMu(tr_test,lags,K,l_ea,cv);
@@ -549,7 +583,6 @@ fflush(stdout);
 
 			S_n = S_np1; // for next iteration
 			W_n = W_np1;
-			mu = mu_np1;
 			d = DStat(tr_test,l_ea) / (lags*q);
 		}
 
