@@ -452,7 +452,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 		exit(1);
 	}
 
-	test_x = MakeArray1D(lags+q);		// test array is p through q
+	test_x = MakeArray1D(lags+q-1);		// test array is p through q
 	if(test_x == NULL) {
 		exit(1);
 	}
@@ -469,7 +469,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 		}
 
 		p = start + N;	// p starts immediately after the base array
-		for(i=0; i < (lags+q); i++) {
+		for(i=0; i < (lags+q-1); i++) {
 			test_x->data[i] = x->data[p+i];
 		}
 
@@ -547,12 +547,13 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			}
 		}
 
-		t_mu = DStat(tr_base,l_ea) / (lags * q);
+		t_mu = DStat(tr_base,l_ea) / (lags * K);
 		if((t_mu > cv) && (first_mu == 1)) {
-			goto skipit;
+			mu = DStat(tr_test,l_ea) / (lags*q);
 		}
 
 		if(t_mu < cv) {
+printf("found\n");
 			mu = t_mu;
 		}
 
@@ -578,8 +579,6 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			if(W_np1 < 0) {
 				W_np1 = 0;
 			}
-printf("S_n: %f S_np1: %f mu: %f m_np1: %f kappa: %f\n",S_n,S_np1,mu,mu_np1,kappa);
-fflush(stdout);
 
 			S_n = S_np1; // for next iteration
 			W_n = W_np1;
@@ -587,7 +586,8 @@ fflush(stdout);
 		}
 
 
-printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f\n",start,start+q+lags,h,W_n,d,S_n,mu);
+printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f\n",
+				start,start+N+q+lags-1,h,W_n,d,S_n,mu); 
 fflush(stdout);
 skipit:
 		FreeArray2D(lcv);
