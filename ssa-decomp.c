@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 
 #include "redblack.h"
 
@@ -11,6 +12,68 @@
 
 #define BAD_VAL (-1000000.0)
 
+double Omega(int i, int L, int N)
+{
+	int K;
+	int L_star;
+	int K_star;
+	int omega;
+
+	K = N - L + 1;
+
+	if(L < K) {
+		L_star = L;
+		K_star = K;
+	} else {
+		L_star = K;
+		K_star = L;
+	}
+
+	if((i >=0) && (i <= (L_star - 1))) {
+		omega = i+1;
+	} else if((i <= L_star) && (i <= K_star)) {
+		i = L_star;
+	} else {
+		i = N - 1;
+	}
+
+	return(omega);
+}
+
+double InnerProduct(Array1D *f_1, Array1D *f_2, int L, int K)
+{
+	double sum;
+	int i;
+	int N;
+
+	N = L + K - 1;
+
+	sum = 0;
+	for(i=0; i < N; i++) {
+		sum += (Omega(i,L,K) * f_1->data[i] * f_2->data[i]);
+	}
+
+	return(sum);
+
+}
+
+double WCorr(Array1D **decomp, int a, int b, int L, int K) {
+	double rho;
+	double ip1;
+	double ip2;
+	double ip3;
+
+	ip1 = InnerProduct(decomp[a], decomp[b], L, K);
+	ip2 = InnerProduct(decomp[a], decomp[a], L, K);
+	ip3 = InnerProduct(decomp[b], decomp[b], L, K);
+
+	rho = ip1 / ((sqrt(ip2) * sqrt(ip3)));
+
+	return(rho);
+}
+
+	
+		
 Array2D *UnitizeArray2D(Array2D *u)
 {
 	Array2D *on_u;
@@ -296,9 +359,89 @@ Array1D **SSADecomposition(Array1D *series, int L)
 
 #ifdef STANDALONE
 
+int SignalRange(char *range, int *start, int *end)
+{
+	char buf[4096];
+	int s;
+	int e;
+	char *cursor;
+	int i;
+
+	
+	memset(buf,0,sizeof(buf));
+	cursor = range;
+	i = 0;
+	while(*cursor != 0) {
+		if(isspace(*cursor)) {
+			cursor++;
+			continue;
+		}
+		if(*cursor == '-') {
+			break;
+		}
+		if(isdigit(*cursor)) {
+			buf[i] = *cursor;
+			i++;
+			if(i == 4096) {
+				break;
+			}
+		}
+		cursor++;
+	}
+
+	if(i == 4096) {
+		return(-1);
+	}
+
+	if(i == 0) {
+		s = -1;
+	} else {
+		s = atoi(buf);
+	}
+
+	cursor++;
+	memset(buf,0,sizeof(buf));
+	i = 0;
+	while(*cursor != 0) {
+		if(isspace(*cursor)) {
+			cursor++;
+			continue;
+		}
+		if(isdigit(*cursor)) {
+			buf[i] = *cursor;
+			i++;
+			if(i == 4096) {
+				break;
+			}
+		}
+		cursor++;
+	}
+
+	if(i == 4096) {
+		return(-1);
+	}
+
+	/*
+	 * only one value signifies end of range -- not start
+	 */
+	if(i == 0) {
+		e = s;
+		s = -1;
+	} else {
+		e = atoi(buf);
+	}
+
+	*start = s;
+	*end = e;
+
+	return(1);
+}
+		
+	
+
 #define ARGS "x:l:N:e:p:"
 char *Usage = "usage: ssa-decomp -x xfile\n\
-\t-e number of signal series\n\
+\t-e range of signal series (start - end || end)\n\
 \t-l lags\n\
 \t-N number of time series elements in base matrix\n\
 \t-p starting index\n";
@@ -317,22 +460,28 @@ int main(int argc, char *argv[])
 	int p;
 	int i;
 	int j;
+	double rho;
+	int K;
 	int N;
 	int signal;
 	Array1D **dcomp;
 	double x_n;
+	int err;
+	int start;
+	int end;
 	
 
 	N = 0;
 	p = 0;
-	signal = 1;
+	start = 0;
+	end = -1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
 				strncpy(Xfile,optarg,sizeof(Xfile));
 				break;
 			case 'e':
-				signal = atoi(optarg);
+				err = SignalRange(optarg,&start,&end);
 				break;
 			case 'l':
 				lags = atoi(optarg);
@@ -349,6 +498,12 @@ int main(int argc, char *argv[])
 				fprintf(stderr,"%s",Usage);
 				exit(1);
 		}
+	}
+
+	if(err < 0) {
+		fprintf(stderr,"error in -e argument\n");
+		fprintf(stderr,"%s",Usage);
+		exit(1);
 	}
 
 	if(Xfile[0] == 0) {
@@ -381,11 +536,22 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	if(start == -1) {
+		start = 0;
+	} else {
+		if(start > 0) {
+			start = start - 1;
+		}
+	}
+
+	if(end == -1) {
+		end = lags - 1;
+	}
 	if(p == 0) { // if p == 0, start from beginning of x
 		dcomp = SSADecomposition(x,lags);
 		for(j = 0; j < x->ydim; j++) {
 			x_n = 0;
-			for(i=0; i < signal; i++) {
+			for(i=start; i < end; i++) {
 				if(dcomp[i] == NULL) {
 					break;
 				}
@@ -405,7 +571,7 @@ int main(int argc, char *argv[])
 		dcomp = SSADecomposition(x_sub,lags);
 		for(j = 0; j < x_sub->ydim; j++) {
 			x_n = 0;
-			for(i=0; i < signal; i++) {
+			for(i=start; i < end; i++) {
 				if(dcomp[i] == NULL) {
 					break;
 				}
@@ -416,6 +582,15 @@ int main(int argc, char *argv[])
 		}
 		FreeArray1D(x_sub);
 	}
+
+	K = x->ydim - lags + 1;
+	for(i=0; i < lags; i++) {
+		for(j=i; j < lags; j++) {
+			rho = WCorr(dcomp,i,j,lags,K);
+			printf("rho-%d-%d %f\n",i,j,fabs(rho));
+			fflush(stdout);
+		}
+	} 
 
 
 	return(0);
