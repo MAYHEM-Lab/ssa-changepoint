@@ -222,33 +222,39 @@ Array2D *DiagonalAverage(Array2D *X)
 }
 
 
-Array1D **SSADecomposition(Array1D *series, int L)
+Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 {
 	Array1D *ev;
 	Array2D *ea;
 	Array2D *U;
 	Array2D *V;
-	Array2D *V_t;
 	Array2D *S;
+	Array2D *tr;
+	Array2D *D;
 	Array2D *X;
 	Array2D *X_t;
+	Array2D *V_t;
+	Array2D *rank_1;
+	Array2D *t_u;
+	Array2D *t_x;
+	Array2D *sum;
 	int K;
 	int N;
 	Array1D *U_col;
-	Array1D *V_col;
-	Array1D *V_col_t;
+	Array1D *V_row;
 	int d;
 	int i;
 	int j;
 	int k;
 	Array1D **dcomp;
-	Array2D *X_i;
 	Array1D *Y;
 	int y_i;
+	Array2D *I;
 
 
 	N = series->ydim;
 	K = N - L + 1;
+
 
 	X = TrajectoryMatrix(series,0,L,K);
 	if(X == NULL) {
@@ -257,21 +263,20 @@ Array1D **SSADecomposition(Array1D *series, int L)
 				L);
 		exit(1);
 	}
-
 	X_t = TransposeArray2D(X);
 	if(X_t == NULL) {
 		fprintf(stderr,"couldn't transpose array X\n");
 		exit(1);
 	}
 
-	S = MultiplyArray2D(X,X_t);
+	S = MultiplyArray2D(X_t,X);
 	if(S == NULL) {
 		fprintf(stderr,
 			"couldn't compute S\n");
 		exit(1);
 	}
-	FreeArray2D(X);
-	
+	FreeArray2D(X_t);
+
 	ev = EigenValueArray2D(S);
 	if(ev == NULL) {
 		fprintf(stderr,"couldn't get eigen values\n");
@@ -285,75 +290,157 @@ Array1D **SSADecomposition(Array1D *series, int L)
 	}
 	FreeArray2D(S);
 
-	U = UnitizeArray2D(ea);
-	if(U == NULL) {
+	V = UnitizeArray2D(ea);
+	if(V == NULL) {
 		fprintf(stderr,"couldn't unitize eigen vectors\n");
 		exit(1);
 	}
 	FreeArray2D(ea);
-	SortEigenVectors(ev,U);
+	SortEigenVectors(ev,V);
 
-	d = ev->ydim;
 
-	dcomp = (Array1D **)malloc(d * sizeof(Array1D *));
-	if(dcomp == NULL) {
+	t_u = MultiplyArray2D(X,V);
+	if(t_u == NULL) {
 		exit(1);
 	}
-	memset(dcomp,0,d * sizeof(Array1D *));
+
+	/*
+	 * need number of cols from V_t
+	 */
+	D = MakeArray2D(t_u->xdim,V->xdim);
+	if(D == NULL) {
+		exit(1);
+	}
+	
+
+	for(i=0; i < D->ydim; i++) {
+		for(j=0; j < D->xdim; j++) {
+			D->data[i*D->xdim+j] = 0;
+		}
+	}
+
+	/*
+	 * diagonal is 1/sqrt(eigenvalue) for non-zero entries
+	 *
+	 * if L < K, leave others zero
+	 */
+	for(i=0; i < L; i++) {
+		if(i < D->xdim) {
+			D->data[i*D->xdim+i] = 1/sqrt(ev->data[i]);
+//			D->data[i*D->xdim+i] = sqrt(ev->data[i]);
+		}
+	}
+
+	U = MultiplyArray2D(t_u,D);
+	if(U == NULL) {
+		fprintf(stderr,"can't get U\n");
+		exit(1);
+	}
+	FreeArray2D(t_u);
+
+#if 0
+printf("L: %d, K: %d\n",L,K);
+V_t = TransposeArray2D(V);
+printf("VT\n");
+PrintArray2D(V_t);
+V_t = InvertArray2D(V);
+printf("V-1\n");
+PrintArray2D(V_t);
+
+for(i=0; i < K; i++) {
+	printf("eigenvalue_%d: %e\n",i+1,ev->data[i]);
+}
+exit(1);
+
+I = MultiplyArray2D(V,V_t);
+PrintArray2D(I);
+exit(1);
+t_u = MultiplyArray2D(V,D);
+t_x = MultiplyArray2D(t_u,V_t);
+printf("S\n");
+PrintArray2D(S);
+printf("XT * X\n");
+PrintArray2D(t_x);
+exit(1);
+for(i=0; i < U->ydim; i++) {
+	printf("col0: %f\n",U->data[i*U->xdim+0]);
+}
+for(i=0; i < U->ydim; i++) {
+	printf("col1: %f\n",U->data[i*U->xdim+1]);
+}
+for(i=0; i < U->ydim; i++) {
+	printf("col2: %f\n",U->data[i*U->xdim+2]);
+}
+exit(1);
+#endif
+	V_t = TransposeArray2D(V);
+//	V_t = InvertArray2D(V);
+	if(V_t == NULL) {
+		fprintf(stderr,"couldn't get V_t\n");
+		exit(1);
+	}
+	FreeArray2D(V);
+	FreeArray2D(X);
+
 
 	U_col = MakeArray1D(U->ydim);
 	if(U_col == NULL) {
 		exit(1);
 	}
 
-	for(j = 0; j < d; j++) {
-		/*
-		 * sorted eigenvalues <= 0 means no more sig components
-		 */
-		if(ev->data[j] <= 0) {
-			break;
+	V_row = MakeArray2D(1,V_t->xdim);
+	if(V_row == NULL) {
+		exit(1);
+	
+	}
+
+	sum = MakeArray2D(U_col->ydim,V_row->xdim);
+	if(sum == NULL) {
+		exit(1);
+	}
+
+	for(i=0; i < sum->ydim; i++) {
+		for(j=0; j < sum->xdim; j++) {
+			sum->data[i*sum->xdim+j] = 0;
 		}
-		for(i=0; i < U->ydim; i++) {
-			U_col->data[i] = U->data[i*U->xdim+j];
+	}
+
+	for(j = start; j < end; j++) {
+		for(i=0; i < U_col->ydim; i++) {
+			U_col->data[i] = U->data[i*U->xdim+j] * sqrt(ev->data[j]);
 		}
-		V_col = MultiplyArray2D(X_t,U_col);
-		for(i=0; i < V_col->ydim; i++) {
-			V_col->data[i] = V_col->data[i] / sqrt(ev->data[j]);
+		for(i=0; i < V_row->xdim; i++) {
+			V_row->data[0*V_row->xdim + i] =
+				V_t->data[j*V_t->xdim+i];
 		}
 
-		V_col_t = TransposeArray2D(V_col);
-		if(V_col_t == NULL) {
-			fprintf(stderr,"couldn't transpose V_col\n");
+		rank_1 = MultiplyArray2D(U_col,V_row);
+		if(rank_1 == NULL) {
 			exit(1);
 		}
-		FreeArray2D(V_col); 
-		X_i = MultiplyArray2D(U_col,V_col_t);
-		if(X_i == NULL) {
-			fprintf(stderr,"couldn't get X_i\n");
-			exit(1);
-		}
-		FreeArray2D(V_col_t);
 
-		for(i=0; i < X_i->ydim; i++) {
-			for(k=0; k < X_i->xdim; k++) {
-				X_i->data[i*X_i->xdim+k] =
-				  X_i->data[i*X_i->xdim+k] * 
-				  sqrt(ev->data[j]);
+		for(i=0; i < sum->ydim; i++) {
+			for(k=0; k < sum->xdim; k++) {
+				sum->data[i*sum->xdim+k] =
+					sum->data[i*sum->xdim+k] +
+				        rank_1->data[i*rank_1->xdim+k];
 			}
 		}
 
-		Y = DiagonalAverage(X_i);
-		FreeArray2D(X_i);
+		FreeArray2D(rank_1);
 
-		dcomp[j] = Y;
 	}
 
-	FreeArray2D(X_t);
+	Y = DiagonalAverage(sum);
+	FreeArray2D(sum);
+
 	FreeArray1D(U_col);
+	FreeArray2D(V_row);
 	FreeArray2D(U);
+	FreeArray2D(V_t);
 	FreeArray1D(ev);
 
-	return(dcomp);
+	return(Y);
 		
 }
 
@@ -464,7 +551,7 @@ int main(int argc, char *argv[])
 	int K;
 	int N;
 	int signal;
-	Array1D **dcomp;
+	Array1D *series_signal;
 	double x_n;
 	int err;
 	int start;
@@ -548,18 +635,7 @@ int main(int argc, char *argv[])
 		end = lags - 1;
 	}
 	if(p == 0) { // if p == 0, start from beginning of x
-		dcomp = SSADecomposition(x,lags);
-		for(j = 0; j < x->ydim; j++) {
-			x_n = 0;
-			for(i=start; i < end; i++) {
-				if(dcomp[i] == NULL) {
-					break;
-				}
-				x_n += dcomp[i]->data[j];
-			}
-			printf("%f\n",x_n);
-			fflush(stdout);
-		}
+		series_signal = SSADecomposition(x,lags,start,end);
 	} else {
 		x_sub = MakeArray1D(x->ydim - p);
 		if(x_sub == NULL) {
@@ -568,21 +644,15 @@ int main(int argc, char *argv[])
 		for(i=p; i < x->ydim; i++) {
 			x_sub->data[i-p] = x->data[i];
 		}
-		dcomp = SSADecomposition(x_sub,lags);
-		for(j = 0; j < x_sub->ydim; j++) {
-			x_n = 0;
-			for(i=start; i < end; i++) {
-				if(dcomp[i] == NULL) {
-					break;
-				}
-				x_n += dcomp[i]->data[j];
-			}
-			printf("%f\n",x_n);
-			fflush(stdout);
-		}
+		series_signal = SSADecomposition(x_sub,lags,start,end);
 		FreeArray1D(x_sub);
 	}
 
+	for(i=0; i < series_signal->ydim; i++) {
+		printf("%f\n",series_signal->data[i]);
+	}
+
+#if 0
 	K = x->ydim - lags + 1;
 	for(i=0; i < lags; i++) {
 		for(j=i; j < lags; j++) {
@@ -591,6 +661,7 @@ int main(int argc, char *argv[])
 			fflush(stdout);
 		}
 	} 
+#endif
 
 
 	return(0);
