@@ -477,6 +477,7 @@ exit(1);
 				        rank_1->data[i*rank_1->xdim+k];
 			}
 		}
+#if 0
 acc = 0;
 for(i=0; i < rank_1->ydim; i++) {
 	for(k=0; k < rank_1->xdim; k++) {
@@ -485,6 +486,7 @@ for(i=0; i < rank_1->ydim; i++) {
 	}
 }
 printf("rank_1-%d: %f\n",j+1,acc);
+#endif
 
 
 		FreeArray2D(rank_1);
