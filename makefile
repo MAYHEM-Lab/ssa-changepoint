@@ -22,4 +22,4 @@ ssa-decomp: ssa-decomp.c
 	${CC} ${CFLAGS} -DSTANDALONE -DUSELAPACK -o ssa-decomp ssa-decomp.c ${LIBS}
 
 clean:
-	rm *.o ssa-cp mioregress-test mioarray-test
+	rm *.o ssa-cp ssa-decomp

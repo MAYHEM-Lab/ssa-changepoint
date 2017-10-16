@@ -13,30 +13,12 @@
 
 Array2D *UnitizeArray2D(Array2D *u)
 {
-	int i;
-	int j;
 	Array2D *on_u;
-	double acc;
 
-	on_u = MakeArray2D(u->ydim,u->xdim);
-	if(on_u == NULL) {
-		return(NULL);
-	}
-
-	for(j=0; j < u->xdim; j++) {
-		acc = 0;
-		for(i=0; i < u->ydim; i++) {
-			acc += (u->data[i*u->xdim+j] *
-				u->data[i*u->xdim+j]);
-		}
-		for(i=0; i < on_u->ydim; i++) {
-			on_u->data[i*on_u->xdim+j] =
-			  u->data[i*u->xdim+j] / sqrt(acc);
-		}
-	}
-
+	on_u = NormalizeColsArray2D(u);
 	return(on_u);
 }
+
 
 Array2D *LagVarArray2D(Array2D *x)
 {
@@ -94,7 +76,6 @@ Array2D *TrajectoryMatrix(Array1D *x, int start, int m, int k)
 
 	return(tr);
 }
-
 
 int SortEigenVectors(Array1D *ev, Array2D *ea)
 {
@@ -193,6 +174,9 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 		return(-1);
 	}
 
+	printf("u*ut\n");
+	PrintArray2D(u_ut);
+
 	x = MakeArray1D(trajectory->ydim);
 	if(x == NULL) {
 		FreeArray2D(ut);
@@ -255,6 +239,20 @@ double DStat(Array2D *trajectory, Array2D *eigenvectors)
 	return(d);
 }
 
+double DtildeVar(int M, int Q) 
+{
+	double m = (double)M;
+	double q = (double)Q;
+	return((2*q*(3*m*q - q*q +1)/3)/(m*q*m*q));
+}
+
+double DVar(int M, int Q) 
+{
+	double m = (double)M;
+	double q = (double)Q;
+	return(2*q*(3*m*q - q*q +1)/3);
+}
+	
 /*
  * x is data matrix for test_matrix
  */
@@ -436,6 +434,7 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 	double S_np1;
 	double d;
 	int first_mu;
+	double test_d;
 
 
 	K = N - lags + 1;
@@ -481,7 +480,6 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			exit(1);
 		}
 
-
 		lcv = LagVarArray2D(tr_base);
 		if(lcv == NULL) {
 			fprintf(stderr,
@@ -513,8 +511,10 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 		PrintArray1D(ev);
 		printf("\n");
 
+#if 0
 		printf("eigen vectors of lag-co-var-matrix\n");
 		PrintArray1D(ea);
+#endif
 
 		/*
 		 * for now, drop the last term as being the "signal" series
@@ -547,12 +547,16 @@ int ChangePointSweep(Array2D *x, int lags, int N,
 			}
 		}
 
+		printf("subspace eigenvectors\n");
+		PrintArray2D(l_ea);
+
 		t_mu = DStat(tr_base,l_ea) / (lags * K);
 		if((t_mu > cv) && (first_mu == 1)) {
-			mu = DStat(tr_test,l_ea) / (lags*q);
+//			mu = DStat(tr_test,l_ea) / (lags*q);
+			t_mu = 1.0;
 		}
 
-		if(t_mu < cv) {
+		if((t_mu > (-1.0*cv)) && (t_mu < cv)) {
 printf("found\n");
 			mu = t_mu;
 		}
@@ -586,8 +590,8 @@ printf("found\n");
 		}
 
 
-printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f\n",
-				start,start+N+q+lags-1,h,W_n,d,S_n,mu); 
+printf("start: %d, target: %d, h: %f, W_n: %f, d: %f S_n: %f mu: %f t_mu: %f\n",
+				start,start+N+lags+q-1,h,W_n,d,S_n,mu,t_mu); 
 fflush(stdout);
 skipit:
 		FreeArray2D(lcv);
