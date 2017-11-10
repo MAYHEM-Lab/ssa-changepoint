@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
+#include <sys/time.h>
 
 #include "redblack.h"
 #include "dlist.h"
@@ -641,6 +642,14 @@ Array1D **SSARank1(Array1D *series, int L, int start, int end)
 			exit(1);
 		}
 
+		/*
+		Y = DiagonalAverage(rank_1);
+		if(Y == NULL) {
+			exit(1);
+		}
+		FreeArray2D(rank_1);
+		*/
+
 		rank_arrays[j] = rank_1;
 
 	}
@@ -745,7 +754,7 @@ Object *InitObject(int id, Array1D *series, int L, int K)
 		exit(1);
 	}
 
-	lob->series = series;
+	lob->series = DiagonalAverage(series);
 	lob->id = id;
 	lob->L = L;
 	lob->K = K;
@@ -755,6 +764,7 @@ Object *InitObject(int id, Array1D *series, int L, int K)
 
 void FreeObject(Object *ob)
 {
+	FreeArray1D(ob->series);
 	Free(ob);
 	return;
 }
@@ -778,14 +788,7 @@ Bin *InitBin(int len)
 		exit(1);
 	}
 
-	b->centroid = MakeArray1D(len);
-	if(b->centroid == NULL) {
-		exit(1);
-	}
-
-	for(i=0; i < b->centroid->ydim; i++) {
-		b->centroid->data[i] = 0;
-	}
+	b->centroid = NULL;
 
 	return(b);
 }
@@ -821,6 +824,67 @@ void PrintBin(FILE *fd, Bin *b)
 }
 
 
+void ComputeCentroid(Bin *b, int L, int K)
+{
+	double dist;
+	Array2D *tr_cent;
+	Array2D *tr_dst;
+	Array2D *r_cent;
+	int i;
+	int j;
+	DlistNode *d;
+	Object *ob;
+
+	tr_cent = NULL;
+	DLIST_FORWARD(b->list,d)
+        {
+                ob = (Object *)d->value.v;
+		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
+		if(tr_dst == NULL) {
+			exit(1);
+		}
+		if(tr_cent == NULL) {
+			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
+			if(tr_cent == NULL) {
+				exit(1);
+			}
+			for(i=0; i < tr_cent->ydim; i++) {
+				for(j=0; j < tr_cent->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] = 0; 
+				}
+			}
+		}
+		for(i=0; i < tr_dst->ydim; i++) {
+			for(j=0; j < tr_dst->xdim; j++) {
+				tr_cent->data[i*tr_cent->xdim+j] +=
+					tr_dst->data[i*tr_dst->xdim+j];
+			}
+		}
+		FreeArray2D(tr_dst);
+	}
+
+
+	r_cent = DiagonalAverage(tr_cent);
+	if(r_cent == NULL) {
+		exit(1);
+	}
+	FreeArray2D(tr_cent);
+	for(i=0; i < r_cent->ydim; i++) {
+		for(j=0; j < r_cent->xdim; j++) {
+			r_cent->data[i*r_cent->xdim+j] /=
+				(double)(b->count);
+		}
+	}
+
+
+	if(b->centroid != NULL) {
+		FreeArray1D(b->centroid);
+	}
+	b->centroid = r_cent;
+
+	return;
+}
+
 void AddObjectToBin(Bin *b, Object *ob)
 {
 	int count;
@@ -833,19 +897,6 @@ void AddObjectToBin(Bin *b, Object *ob)
 	count = b->count;
 	b->count++;
 	DlistAppend(b->list,(Hval)(void *)ob);
-
-	r_series = DiagonalAverage(ob->series);
-	if(r_series == NULL) {
-		exit(1);
-	}
-
-	for(i=0; i < b->centroid->ydim; i++) {
-		old_val = b->centroid->data[i] * (double)count;
-		new_val = old_val + r_series->data[i];
-		b->centroid->data[i] = new_val / (double)(b->count);
-	}
-
-	FreeArray2D(r_series);
 
 	return;
 }
@@ -895,27 +946,71 @@ double InnerProduct(Array1D *f_1, Array1D *f_2, int L, int K)
 
 }
 
-double WCorr(Array1D *x, Array1D *y, int L, int K) {
+double Corr(Array1D *x, Array1D *y)
+{
+	int i;
+	double x_bar;
+	double y_bar;
+	double x2;
+	double y2;
+	double count;
+	double acc;
+	double num;
+	double r;
+
+	acc = 0;
+	count = 0;
+
+	for(i=0; i < x->ydim; i++) {
+		acc += x->data[i];
+		count++;
+	}
+	x_bar = acc / count;
+
+	acc = 0;
+	count = 0;
+	for(i=0; i < y->ydim; i++) {
+		acc += y->data[i];
+		count++;
+	}
+	y_bar = acc / count;
+
+	acc = 0;
+	count = 0;
+	for(i=0; i < x->ydim; i++) {
+		acc += ((x->data[i] - x_bar) * (y->data[i] - y_bar));
+		count++;
+	}
+	num = acc / count;
+
+	acc = 0;
+	count = 0;
+	for(i=0; i < x->ydim; i++) {
+		acc += ((x->data[i] - x_bar) * (x->data[i] - x_bar));
+		count++;
+	}
+	x2 = acc / count;
+
+	acc = 0;
+	count = 0;
+	for(i=0; i < y->ydim; i++) {
+		acc += ((y->data[i] - y_bar) * (y->data[i] - y_bar));
+		count++;
+	}
+	y2 = acc / count;
+
+	r = num / sqrt(x2 * y2);
+
+	return(fabs(r));
+} 
+		
+
+
+double WCorr(Array2D *tr_x, Array2D *tr_y, int L, int K) {
         double rho;
         double ip1;
         double ip2;
         double ip3;
-	Array2D *tr_x;
-	Array2D *tr_y;
-
-	/*
-	tr_x = TrajectoryMatrix(x,0,L,K);
-	if(tr_x == NULL) {
-		exit(1);
-	}
-
-	tr_y = TrajectoryMatrix(y,0,L,K);
-	if(tr_y == NULL) {
-		exit(1);
-	}
-	*/
-	tr_x = x;
-	tr_y = y;
 
         ip1 = InnerProduct(tr_x, tr_y, L, K);
         ip2 = InnerProduct(tr_x, tr_x, L, K);
@@ -923,31 +1018,97 @@ double WCorr(Array1D *x, Array1D *y, int L, int K) {
 
         rho = ip1 / ((sqrt(ip2) * sqrt(ip3)));
 
-	/*
-	FreeArray2D(tr_x);
-	FreeArray2D(tr_y);
-	*/
-
         return(rho);
 }
 
 /*
  * src is centrod, dst is tr matrix
  */
-double Distance(Array1D *src, Array1D *dst, int L, int K)
+double DistanceW(Bin *b, Array1D *dst, int L, int K)
 {
 	double dist;
-	Array2D *tr_src;
+	Array2D *tr_cent;
+	Array2D *tr_dst;
+	int i;
+	int j;
+	DlistNode *d;
+	Object *ob;
+	int adj = 0;
 
-	tr_src = TrajectoryMatrix(src,0,L,K);
-	if(tr_src == NULL) {
-		exit(1);
+	tr_cent = NULL;
+	DLIST_FORWARD(b->list,d)
+        {
+                ob = (Object *)d->value.v;
+		if(ob->series == dst) {
+			adj = 1;
+			continue;
+		}
+		/*
+		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
+		if(tr_dst == NULL) {
+			exit(1);
+		}
+		*/
+		tr_dst = ob->series;
+		if(tr_cent == NULL) {
+			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
+			if(tr_cent == NULL) {
+				exit(1);
+			}
+			for(i=0; i < tr_cent->ydim;i++) {
+				for(j=0; j < tr_cent->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] = 
+						tr_dst->data[i*tr_dst->xdim+j];
+				}
+			}
+			
+		} else {
+			for(i=0; i < tr_dst->ydim; i++) {
+				for(j=0; j < tr_dst->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] +=
+						tr_dst->data[i*tr_dst->xdim+j];
+				}
+			}
+			/*
+			for(i=0; i < tr_dst->ydim; i++) {
+				for(j=0; j < tr_dst->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] /=
+						(double)(b->count-adj);
+				}
+			}
+			*/
+		}
 	}
 
-	dist = 1.0 - WCorr(tr_src,dst,L,K);
-	FreeArray2D(tr_src);
-	return(dist);
+	if(tr_cent == NULL) {
+		return(1.0);
+	}
+
+
+//	dist = 1.0 - WCorr(tr_cent,dst,L,K);
+	dist = WCorr(tr_cent,dst,L,K);
+	FreeArray2D(tr_cent);
+	return(fabs(dist));
 }
+
+double DistanceC(Bin *b, Array1D *dst, int L, int K)
+{
+	double dist;
+	Array2D *tr_cent;
+	Array2D *tr_dst;
+	Array2D *r_series;
+	Array2D *r_cent;
+	int i;
+	int j;
+	DlistNode *d;
+	Object *ob;
+
+
+	dist = 1.0 - Corr(b->centroid,dst);
+//	dist = Corr(r_cent,r_series);
+	return(fabs(dist));
+}
+
 
 int IsEqCentroid(Bin *b1, Bin *b2)
 {
@@ -955,6 +1116,7 @@ int IsEqCentroid(Bin *b1, Bin *b2)
 
 	for(i=0; i < b1->centroid->ydim; i++) {
 		if(b1->centroid->data[i] != b2->centroid->data[i]) {
+printf("%d %e %e\n",i,b1->centroid->data[i],b2->centroid->data[i]);
 			return(0);
 		}
 	}
@@ -995,6 +1157,8 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 	double min_dist;
 	int min_j;
 	double dist;
+	struct timeval tm;
+
 
 	/*
 	 * make a set of k bins
@@ -1017,6 +1181,8 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 	/*
 	 * initially, scatter randomly
 	 */
+	gettimeofday(&tm,NULL);
+	srand48(tm.tv_sec+tm.tv_usec);
 	for(i=0; i < L; i++) {
 		ob = InitObject(i,decomp[i],L,K);
 		if(ob == NULL) {
@@ -1024,6 +1190,7 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		}
 		j = RAND() * means;
 		AddObjectToBin(bins[j],ob);
+		ComputeCentroid(bins[j],L,K);
 	}
 
 	done = 0;
@@ -1060,7 +1227,7 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 				min_j = 0;
 				for(j=0; j < means; j++)
 				{
-					dist = Distance(bins[j]->centroid,
+					dist = DistanceC(bins[j],
 						        ob->series,L,K);
 					if(dist < min_dist)
 					{
@@ -1068,7 +1235,9 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 						min_j = j;
 					}
 				}
+printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
 				AddObjectToBin(new_bins[min_j],ob);
+				ComputeCentroid(new_bins[min_j],L,K);
 			}
 		}
 
@@ -1082,8 +1251,7 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 				FreeBin(bins[i]);
 			}
 			free(bins);
-			done = 1;
-			break;
+			return(new_bins);
 		}
 		/*
 		 * otherwise, make new_bin into bins and repeat
@@ -1138,7 +1306,7 @@ int main(int argc, char *argv[])
 
 	N = 0;
 	p = 0;
-	start = 0;
+	start = -1;
 	end = -1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
@@ -1203,33 +1371,29 @@ int main(int argc, char *argv[])
 
 	if(start == -1) {
 		start = 0;
+		rank_arrays = SSARank1(x,lags,0,lags);
+		if(rank_arrays == NULL) {
+			exit(1);
+		}
+		K = x->ydim - lags + 1;
+		bins = KMeans(rank_arrays,lags,K,3);
+		for(i=0; i < 3; i++) {
+			printf("Bin: %d\n",i);
+			PrintBin(stdout,bins[i]);
+		}
+		free(rank_arrays);
+		free(bins);
 	} else {
 		if(start > 0) {
 			start = start - 1;
 		}
 	}
 
-	rank_arrays = SSARank1(x,lags,0,lags);
-	if(rank_arrays == NULL) {
-		exit(1);
-	}
-
-	K = x->ydim - lags + 1;
-
-	bins = KMeans(rank_arrays,lags,K,2);
-	for(i=0; i < 2; i++) {
-		PrintBin(stdout,bins[i]);
-	}
-
-	free(rank_arrays);
-	free(bins);
-
-exit(1);
-
-
 	if(end == -1) {
 		end = lags - 1;
 	}
+
+
 	if(p == 0) { // if p == 0, start from beginning of x
 		series_signal = SSADecomposition(x,lags,start,end);
 	} else {
