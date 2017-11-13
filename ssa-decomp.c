@@ -960,7 +960,6 @@ double Corr(Array1D *x, Array1D *y)
 
 	acc = 0;
 	count = 0;
-
 	for(i=0; i < x->ydim; i++) {
 		acc += x->data[i];
 		count++;
@@ -981,7 +980,7 @@ double Corr(Array1D *x, Array1D *y)
 		acc += ((x->data[i] - x_bar) * (y->data[i] - y_bar));
 		count++;
 	}
-	num = acc / count;
+	num = acc;
 
 	acc = 0;
 	count = 0;
@@ -989,7 +988,7 @@ double Corr(Array1D *x, Array1D *y)
 		acc += ((x->data[i] - x_bar) * (x->data[i] - x_bar));
 		count++;
 	}
-	x2 = acc / count;
+	x2 = acc;
 
 	acc = 0;
 	count = 0;
@@ -997,7 +996,7 @@ double Corr(Array1D *x, Array1D *y)
 		acc += ((y->data[i] - y_bar) * (y->data[i] - y_bar));
 		count++;
 	}
-	y2 = acc / count;
+	y2 = acc;
 
 	r = num / sqrt(x2 * y2);
 
@@ -1031,63 +1030,21 @@ double DistanceW(Bin *b, Array1D *dst, int L, int K)
 	Array2D *tr_dst;
 	int i;
 	int j;
-	DlistNode *d;
-	Object *ob;
-	int adj = 0;
 
-	tr_cent = NULL;
-	DLIST_FORWARD(b->list,d)
-        {
-                ob = (Object *)d->value.v;
-		if(ob->series == dst) {
-			adj = 1;
-			continue;
-		}
-		/*
-		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
-		if(tr_dst == NULL) {
-			exit(1);
-		}
-		*/
-		tr_dst = ob->series;
-		if(tr_cent == NULL) {
-			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
-			if(tr_cent == NULL) {
-				exit(1);
-			}
-			for(i=0; i < tr_cent->ydim;i++) {
-				for(j=0; j < tr_cent->xdim; j++) {
-					tr_cent->data[i*tr_cent->xdim+j] = 
-						tr_dst->data[i*tr_dst->xdim+j];
-				}
-			}
-			
-		} else {
-			for(i=0; i < tr_dst->ydim; i++) {
-				for(j=0; j < tr_dst->xdim; j++) {
-					tr_cent->data[i*tr_cent->xdim+j] +=
-						tr_dst->data[i*tr_dst->xdim+j];
-				}
-			}
-			/*
-			for(i=0; i < tr_dst->ydim; i++) {
-				for(j=0; j < tr_dst->xdim; j++) {
-					tr_cent->data[i*tr_cent->xdim+j] /=
-						(double)(b->count-adj);
-				}
-			}
-			*/
-		}
-	}
-
+	tr_cent = TrajectoryMatrix(b->centroid,0,L,K);
 	if(tr_cent == NULL) {
-		return(1.0);
+		exit(1);
+	}
+
+	tr_dst = TrajectoryMatrix(dst,0,L,K);
+	if(tr_dst == NULL) {
+		exit(1);
 	}
 
 
-//	dist = 1.0 - WCorr(tr_cent,dst,L,K);
-	dist = WCorr(tr_cent,dst,L,K);
+	dist = 1.0 - WCorr(tr_cent,tr_dst,L,K);
 	FreeArray2D(tr_cent);
+	FreeArray2D(tr_dst);
 	return(fabs(dist));
 }
 
@@ -1149,6 +1106,7 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 {
 	int i;
 	int j;
+	int curr;
 	Bin **bins;
 	Bin **new_bins;
 	Object *ob;
@@ -1178,6 +1136,7 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		}
 	}
 
+#if 0
 	/*
 	 * initially, scatter randomly
 	 */
@@ -1192,6 +1151,37 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		AddObjectToBin(bins[j],ob);
 		ComputeCentroid(bins[j],L,K);
 	}
+#endif
+
+	curr = 0;
+	for(i=0; i < means; i ++) {
+		for(j=0; j < L/means; j++) {
+			ob = InitObject(curr,decomp[curr],L,K); 
+			if(ob == NULL) {
+				exit(1);
+			}
+printf("i: %d, j: %d, curr: %d\n",i,j,curr);
+			AddObjectToBin(bins[i],ob);
+			ComputeCentroid(bins[i],L,K);
+			curr++;
+		}
+	}
+
+	i = i - 1;
+	while(curr < L) {
+		ob = InitObject(curr,decomp[curr],L,K); 
+		if(ob == NULL) {
+			exit(1);
+		}
+printf("i: %d, j: %d, curr: %d\n",i,j,curr);
+		AddObjectToBin(bins[i],ob);
+		ComputeCentroid(bins[i],L,K);
+		curr++;
+	}
+
+
+
+	
 
 	done = 0;
 	while(!done)
@@ -1270,10 +1260,11 @@ printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
 
 	
 
-#define ARGS "x:l:N:e:p:"
+#define ARGS "x:l:N:e:p:m:"
 char *Usage = "usage: ssa-decomp -x xfile\n\
 \t-e range of signal series (start - end || end)\n\
 \t-l lags\n\
+\t-m means (for k-means)\n\
 \t-N number of time series elements in base matrix\n\
 \t-p starting index\n";
 
@@ -1302,12 +1293,14 @@ int main(int argc, char *argv[])
 	int end;
 	Bin **bins;
 	Array1D **rank_arrays;
+	int means;
 	
 
 	N = 0;
 	p = 0;
 	start = -1;
 	end = -1;
+	means = 2;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
@@ -1324,6 +1317,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'N':
 				N = atoi(optarg);
+				break;
+			case 'm':
+				means = atoi(optarg);
 				break;
 			default:
 				fprintf(stderr,
@@ -1376,8 +1372,8 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 		K = x->ydim - lags + 1;
-		bins = KMeans(rank_arrays,lags,K,3);
-		for(i=0; i < 3; i++) {
+		bins = KMeans(rank_arrays,lags,K,means);
+		for(i=0; i < means; i++) {
 			printf("Bin: %d\n",i);
 			PrintBin(stdout,bins[i]);
 		}
