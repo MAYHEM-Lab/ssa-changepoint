@@ -16,6 +16,9 @@
 
 #define BAD_VAL (-1000000.0)
 
+double Corr(Array1D *x, Array1D *y);
+int JenksSplitEigen(Array1D *ev);
+
 struct object_stc
 {
 	int id;
@@ -217,6 +220,7 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	int y_i;
 	Array2D *I;
 	double acc;
+	int min_split;
 
 
 	N = series->ydim;
@@ -264,6 +268,11 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	}
 	FreeArray2D(ea);
 	SortEigenVectors(ev,V);
+
+	min_split = JenksSplitEigen(ev);
+printf("min_split: %d\n",min_split);
+fflush(stdout);
+
 
 
 	t_u = MultiplyArray2D(X,V);
@@ -317,75 +326,6 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	}
 	FreeArray2D(t_u);
 
-#if 0
-printf("L: %d, K: %d\n",L,K);
-t_u = TransposeArray2D(U);
-I = MultiplyArray2D(t_u,U);
-PrintArray2D(I);
-exit(1);
-
-
-for(i=0; i < I->ydim; i++) {
-	for(j=0; j < I->xdim; j++) {
-		if(fabs(I->data[i*I->xdim+j]) < (1.0/1000000.0)) {
-			I->data[i*I->xdim+j] = 0.0;
-		}
-		printf("%1.0f ",I->data[i*I->xdim+j]);
-	}
-	printf("\n");
-}
-t_u = TransposeArray2D(U);
-I = MultiplyArray2D(t_u,U);
-printf("U is %d x %d\n",U->ydim,U->xdim);
-printf("U_t * U\n");
-for(i=0; i < I->ydim; i++) {
-	for(j=0; j < I->xdim; j++) {
-		if(fabs(I->data[i*I->xdim+j]) < (1.0/1000000.0)) {
-			I->data[i*I->xdim+j] = 0.0;
-		}
-		printf("%1.1f ",I->data[i*I->xdim+j]);
-	}
-	printf("\n");
-}
-
-printf("D\n");
-PrintArray2D(D);
-t_u = TransposeArray2D(D);
-printf("D^t\n");
-PrintArray2D(t_u);
-exit(1);
-for(i=0; i < K; i++) {
-	printf("eigenvalue_%d: %f\n",i+1,ev->data[i]);
-}
-printf("VT\n");
-PrintArray2D(V_t);
-V_t = InvertArray2D(V);
-printf("V-1\n");
-PrintArray2D(V_t);
-
-exit(1);
-
-I = MultiplyArray2D(V,V_t);
-PrintArray2D(I);
-exit(1);
-t_u = MultiplyArray2D(V,D);
-t_x = MultiplyArray2D(t_u,V_t);
-printf("S\n");
-PrintArray2D(S);
-printf("XT * X\n");
-PrintArray2D(t_x);
-exit(1);
-for(i=0; i < U->ydim; i++) {
-	printf("col0: %f\n",U->data[i*U->xdim+0]);
-}
-for(i=0; i < U->ydim; i++) {
-	printf("col1: %f\n",U->data[i*U->xdim+1]);
-}
-for(i=0; i < U->ydim; i++) {
-	printf("col2: %f\n",U->data[i*U->xdim+2]);
-}
-exit(1);
-#endif
 	V_t = TransposeArray2D(V);
 //	V_t = InvertArray2D(V);
 	if(V_t == NULL) {
@@ -407,7 +347,10 @@ exit(1);
 	
 	}
 
+#if 0
 	sum = MakeArray2D(U_col->ydim,V_row->xdim);
+#endif
+	sum = MakeArray1D(N);
 	if(sum == NULL) {
 		exit(1);
 	}
@@ -418,7 +361,8 @@ exit(1);
 		}
 	}
 
-	for(j = start; j < end; j++) {
+//	for(j = start; j < end; j++) {
+	for(j = 0; j < min_split; j++) {
 		for(i=0; i < U_col->ydim; i++) {
 			U_col->data[i] = U->data[i*U->xdim+j] * sqrt(ev->data[j]);
 		}
@@ -432,6 +376,7 @@ exit(1);
 			exit(1);
 		}
 
+#if 0
 		for(i=0; i < sum->ydim; i++) {
 			for(k=0; k < sum->xdim; k++) {
 				sum->data[i*sum->xdim+k] =
@@ -439,24 +384,24 @@ exit(1);
 				        rank_1->data[i*rank_1->xdim+k];
 			}
 		}
-#if 0
-acc = 0;
-for(i=0; i < rank_1->ydim; i++) {
-	for(k=0; k < rank_1->xdim; k++) {
-		acc += (rank_1->data[i*rank_1->xdim+k] *
-		       rank_1->data[i*rank_1->xdim+k]); 
-	}
-}
-printf("rank_1-%d: %f\n",j+1,acc);
 #endif
-
-
+		Y = DiagonalAverage(rank_1);
+		for(i=0; i < sum->ydim; i++) {
+			for(k=0; k < sum->xdim; k++) {
+				sum->data[i*sum->xdim+k] =
+					sum->data[i*sum->xdim+k] +
+				        Y->data[i*Y->xdim+k];
+			}
+		}
 		FreeArray2D(rank_1);
+		FreeArray2D(Y);
 
 	}
 
+#if 0
 	Y = DiagonalAverage(sum);
 	FreeArray2D(sum);
+#endif
 
 	FreeArray1D(U_col);
 	FreeArray2D(V_row);
@@ -464,7 +409,10 @@ printf("rank_1-%d: %f\n",j+1,acc);
 	FreeArray2D(V_t);
 	FreeArray1D(ev);
 
+#if 0
 	return(Y);
+#endif
+	return(sum);
 		
 }
 
@@ -498,6 +446,8 @@ Array1D **SSARank1(Array1D *series, int L, int start, int end)
 	int k;
 	Array1D **dcomp;
 	Array1D *Y;
+	Array1D *Y1;
+	double r;
 	int y_i;
 	Array2D *I;
 	double acc;
@@ -799,7 +749,9 @@ void FreeBin(Bin *b)
 
 	DlistRemove(b->list);
 
-	FreeArray1D(b->centroid);
+	if(b->centroid != NULL) {
+		FreeArray1D(b->centroid);
+	}
 	Free(b);
 
 	return;
@@ -1116,6 +1068,13 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 	int min_j;
 	double dist;
 	struct timeval tm;
+	int taboo_i;
+	int taboo_j;
+	int taboo_id;
+	int move_id;
+	int move_i;
+	int move_j;
+	int move_count;
 
 
 	/*
@@ -1136,7 +1095,6 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		}
 	}
 
-#if 0
 	/*
 	 * initially, scatter randomly
 	 */
@@ -1151,8 +1109,8 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		AddObjectToBin(bins[j],ob);
 		ComputeCentroid(bins[j],L,K);
 	}
-#endif
 
+#if 0
 	curr = 0;
 	for(i=0; i < means; i ++) {
 		for(j=0; j < L/means; j++) {
@@ -1160,7 +1118,6 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 			if(ob == NULL) {
 				exit(1);
 			}
-printf("i: %d, j: %d, curr: %d\n",i,j,curr);
 			AddObjectToBin(bins[i],ob);
 			ComputeCentroid(bins[i],L,K);
 			curr++;
@@ -1173,17 +1130,18 @@ printf("i: %d, j: %d, curr: %d\n",i,j,curr);
 		if(ob == NULL) {
 			exit(1);
 		}
-printf("i: %d, j: %d, curr: %d\n",i,j,curr);
 		AddObjectToBin(bins[i],ob);
 		ComputeCentroid(bins[i],L,K);
 		curr++;
 	}
 
+#endif
 
 
 	
 
 	done = 0;
+	taboo_id = -1;
 	while(!done)
 	{
 		new_bins = (Bin **)Malloc(means*sizeof(Bin *));
@@ -1204,6 +1162,7 @@ printf("i: %d, j: %d, curr: %d\n",i,j,curr);
 		/*
 		 * traverse the existing data
 		 */
+		move_count = 0;
 		for(i=0; i < means; i++)
 		{
 			DLIST_FORWARD(bins[i]->list,d)
@@ -1225,11 +1184,35 @@ printf("i: %d, j: %d, curr: %d\n",i,j,curr);
 						min_j = j;
 					}
 				}
+				if(min_j != i) {
+					move_i = i;
+					move_j = min_j;
+					move_id = ob->id;
+					move_count++;
+				}
+if(i != min_j) {
 printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
+}
 				AddObjectToBin(new_bins[min_j],ob);
 				ComputeCentroid(new_bins[min_j],L,K);
 			}
 		}
+
+		if((move_count == 1) &&
+		   (move_j == taboo_i) &&
+		   (move_i == taboo_j) &&
+		   (move_id == taboo_id)) {
+			for(i=0; i < means; i++)
+			{
+				FreeBin(bins[i]);
+			}
+			free(bins);
+			return(new_bins);
+		}
+		taboo_id = move_id;
+		taboo_i = move_i;
+		taboo_j = move_j;
+		
 
 		/*
 		 * if we have converged, bail out
@@ -1258,7 +1241,253 @@ printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
 	return(new_bins);
 }
 
+/*
+ * https://www.ehdp.com/vitalnet/breaks-1.htm
+ */
+
+double JenksDev(Array1D **decomp, int size, int split, int L, int K)
+{
+	int i;
+	DlistNode *d;
+	double acc;
+	double total;
+	Object *ob;
+	double corr;
+	double avg;
+	double avg1;
+	double avg2;
+	double v1;
+	double v2;
+	Bin **bins;
+
+	bins = (Bin **)Malloc(2 * sizeof(Bin *));
+	if(bins == NULL) {
+		exit(1);
+	}
+
+	bins[0] = InitBin(decomp[0]->ydim);
+	bins[1] = InitBin(decomp[0]->ydim);
+
+	if(split == 0) {
+		for(i=0; i < size; i++) {
+			ob = InitObject(i,decomp[i],L,K);
+			if(ob == NULL) {
+				exit(1);
+			}
+			AddObjectToBin(bins[0],ob);
+		}
+		ComputeCentroid(bins[0],L,K);
+		acc = 0;
+		total = 0;
+		DLIST_FORWARD(bins[0]->list,d) {
+			ob = (Object *)d->value.v;
+			corr = 1 - Corr(bins[0]->centroid,ob->series);
+//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
+//			corr = fabs(Corr(bins[0]->centroid,ob->series));
+			acc += corr;
+			total += 1;
+		}
+		avg = acc /total;
+		acc = 0;
+		DLIST_FORWARD(bins[0]->list,d) {
+			ob = (Object *)d->value.v;
+			corr = 1 - Corr(bins[0]->centroid,ob->series);
+//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
+//			corr = fabs(Corr(bins[0]->centroid,ob->series));
+			acc += ((corr - avg) * (corr - avg));
+		}
+		v1 = acc;
+		v2 = 0;
+	} else {
+		for(i=0; i < split; i++) {
+			ob = InitObject(i,decomp[i],L,K);
+			if(ob == NULL) {
+				exit(1);
+			}
+			AddObjectToBin(bins[0],ob);
+		}
+		ComputeCentroid(bins[0],L,K);
+		for(i=split; i < size; i++) {
+			ob = InitObject(i,decomp[i],L,K);
+			if(ob == NULL) {
+				exit(1);
+			}
+			AddObjectToBin(bins[1],ob);
+		}
+		ComputeCentroid(bins[1],L,K);
+		acc = 0;
+		total = 0;
+		DLIST_FORWARD(bins[0]->list,d) {
+			ob = (Object *)d->value.v;
+			corr = 1 - Corr(bins[0]->centroid,ob->series);
+//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
+//			corr = fabs(Corr(bins[0]->centroid,ob->series));
+			acc += corr;
+			total += 1;
+		}
+		avg1 = acc / total;
+		acc = 0;
+		DLIST_FORWARD(bins[0]->list,d) {
+			ob = (Object *)d->value.v;
+			corr = 1 - Corr(bins[0]->centroid,ob->series);
+//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
+//			corr = fabs(Corr(bins[0]->centroid,ob->series));
+			acc += ((corr - avg1) * (corr - avg1));
+		}
+		v1 = acc;
+		acc = 0;
+		total = 0;
+		DLIST_FORWARD(bins[1]->list,d) {
+			ob = (Object *)d->value.v;
+			corr = 1 - Corr(bins[1]->centroid,ob->series);
+//			corr = 1 - fabs(Corr(bins[1]->centroid,ob->series));
+//			corr = fabs(Corr(bins[1]->centroid,ob->series));
+			acc += corr;
+			total += 1;
+		}
+		avg2 = acc / total;
+		acc = 0;
+		DLIST_FORWARD(bins[1]->list,d) {
+			ob = (Object *)d->value.v;
+			corr = 1 - Corr(bins[1]->centroid,ob->series);
+//			corr = 1 - fabs(Corr(bins[1]->centroid,ob->series));
+//			corr = fabs(Corr(bins[1]->centroid,ob->series));
+			acc += ((corr - avg2) * (corr - avg2));
+		}
+		v2 = acc;
+	}
+	DLIST_FORWARD(bins[0]->list,d) {
+		ob = (Object *)d->value.v;
+		FreeObject(ob);
+	}
+	DLIST_FORWARD(bins[1]->list,d) {
+		ob = (Object *)d->value.v;
+		FreeObject(ob);
+	}
+	FreeBin(bins[0]);
+	FreeBin(bins[1]);
+	Free(bins);
+
+	return(v1+v2);
+
+}
+
+double JenksDevEigen(Array1D *ev, int split)
+{
+	int i;
+	double acc;
+	double total;
+	double avg;
+	double avg1;
+	double avg2;
+	double v1;
+	double v2;
+
+	if(split == 0) {
+		acc = 0;
+		total = 0;
+		for(i=0; i < ev->ydim; i++) {
+			acc += ev->data[i];
+			total += 1;
+		}
+		avg = acc /total;
+		acc = 0;
+		for(i=0; i < ev->ydim; i++) {
+			acc += ((ev->data[i] - avg) * (ev->data[i] - avg));
+		}
+		v1 = acc;
+		v2 = 0;
+	} else {
+		acc = 0;
+		total = 0;
+		for(i=0; i < split; i++) {
+			acc += ev->data[i];
+                        total += 1;
+		}
+		avg1 = acc/total;
+		acc = 0;
+		for(i=0; i < split; i++) {
+			acc += ((ev->data[i] - avg1) * (ev->data[i] - avg1));
+		}
+		v1 = acc;
+		
+		acc = 0;
+		total = 0;
+		for(i=split; i < ev->ydim; i++) {
+			acc += ev->data[i];
+                        total += 1;
+		}
+		avg2 = acc/total;
+		acc = 0;
+		for(i=split; i < ev->ydim; i++) {
+			acc += ((ev->data[i] - avg2) * (ev->data[i] - avg2));
+		}
+		v2 = acc;
+	}
+	return(v1+v2);
+}
+
+int JenksSplit(Array1D **decomp, int size, int L, int K)
+{
+	int i;
+	int j;
+	int split;
+	double global_dev;
+	double class_dev;
+	double min_dev = 9999999999999;
+	int min_split;
+	double gof;
+
+	global_dev = JenksDev(decomp,size,0,L,K);
+	for(split = 1; split < size-1; split++) {
+		class_dev = JenksDev(decomp,size,split,L,K); 
+		if(class_dev < min_dev) {
+			min_split = split;
+			min_dev = class_dev;
+		}
+		gof = (global_dev - class_dev) / global_dev;
+		printf("split: %d, class: %f, min_split: %d gof: %f\n",
+			split,
+			class_dev,
+			min_split,
+			gof);
+		fflush(stdout);
+	}
+
+	return(min_split);
+
+}
 	
+int JenksSplitEigen(Array1D *ev)
+{
+	int i;
+	int j;
+	int split;
+	double global_dev;
+	double class_dev;
+	double min_dev = 9999999999999;
+	int min_split;
+	double gof;
+
+	global_dev = JenksDevEigen(ev,0);
+	for(split = 1; split < ev->ydim-1; split++) {
+		class_dev = JenksDevEigen(ev,split); 
+		if(class_dev < min_dev) {
+			min_split = split;
+			min_dev = class_dev;
+		}
+		gof = (global_dev - class_dev) / global_dev;
+		printf("split: %d, class: %f, min_split: %d gof: %f\n",
+			split,
+			class_dev,
+			min_split,
+			gof);
+		fflush(stdout);
+	}
+
+	return(min_split);
+
+}
 
 #define ARGS "x:l:N:e:p:m:"
 char *Usage = "usage: ssa-decomp -x xfile\n\
@@ -1294,6 +1523,7 @@ int main(int argc, char *argv[])
 	Bin **bins;
 	Array1D **rank_arrays;
 	int means;
+	int split;
 	
 
 	N = 0;
@@ -1367,18 +1597,22 @@ int main(int argc, char *argv[])
 
 	if(start == -1) {
 		start = 0;
+#if 0
 		rank_arrays = SSARank1(x,lags,0,lags);
 		if(rank_arrays == NULL) {
 			exit(1);
 		}
 		K = x->ydim - lags + 1;
+		split = JenksSplit(rank_arrays,lags,lags,K);
+		printf("best jenks split: %d\n",i);
 		bins = KMeans(rank_arrays,lags,K,means);
 		for(i=0; i < means; i++) {
 			printf("Bin: %d\n",i);
 			PrintBin(stdout,bins[i]);
 		}
-		free(rank_arrays);
 		free(bins);
+		free(rank_arrays);
+#endif
 	} else {
 		if(start > 0) {
 			start = start - 1;
