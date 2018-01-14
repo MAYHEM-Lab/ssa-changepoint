@@ -187,6 +187,67 @@ Array2D *DiagonalAverage(Array2D *X)
 }
 
 
+
+int Eigenize(Array1D *series, int L, int K, Array1D **o_ev, Array2D **o_V)
+{
+	Array1D *ev;
+	Array2D *ea;
+	Array2D *V;
+	Array2D *S;
+	Array2D *X;
+	Array2D *X_t;
+	int N;
+
+
+	X = TrajectoryMatrix(series,0,L,K);
+	if(X == NULL) {
+		fprintf(stderr, 
+			"couldn't create trajctory matrix for %d lags\n",
+				L);
+		exit(1);
+	}
+	X_t = TransposeArray2D(X);
+	if(X_t == NULL) {
+		fprintf(stderr,"couldn't transpose array X\n");
+		exit(1);
+	}
+
+	S = MultiplyArray2D(X_t,X);
+	if(S == NULL) {
+		fprintf(stderr,
+			"couldn't compute S\n");
+		exit(1);
+	}
+	FreeArray2D(X_t);
+	FreeArray2D(X);
+
+	ev = EigenValueArray2D(S);
+	if(ev == NULL) {
+		fprintf(stderr,"couldn't get eigen values\n");
+		exit(1);
+	}
+
+	ea = EigenVectorArray2D(S);
+	if(ea == NULL) {
+		fprintf(stderr,"couldn't get eigen vectors\n");
+		exit(1);
+	}
+	FreeArray2D(S);
+
+	V = UnitizeArray2D(ea);
+	if(V == NULL) {
+		fprintf(stderr,"couldn't unitize eigen vectors\n");
+		exit(1);
+	}
+	FreeArray2D(ea);
+	SortEigenVectors(ev,V);
+
+	*o_ev = ev;
+	*o_V = V;
+
+	return(1);
+}
+
 Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 {
 	Array1D *ev;
@@ -221,6 +282,8 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	Array2D *I;
 	double acc;
 	int min_split;
+	int new_split;
+	Array1D *sig;
 
 
 	N = series->ydim;
@@ -234,6 +297,7 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 				L);
 		exit(1);
 	}
+#if 0
 	X_t = TransposeArray2D(X);
 	if(X_t == NULL) {
 		fprintf(stderr,"couldn't transpose array X\n");
@@ -269,8 +333,24 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	FreeArray2D(ea);
 	SortEigenVectors(ev,V);
 
+#endif
+
+	Eigenize(series,L,K,&ev,&V);
+
 	min_split = JenksSplitEigen(ev);
 printf("min_split: %d\n",min_split);
+
+	sig = MakeArray1D(min_split);
+	if(sig == NULL) {
+		exit(1);
+	}
+	for(i=0; i < min_split; i++) {
+		sig->data[i] = ev->data[i];
+	}
+
+	new_split = JenksSplitEigen(sig);
+printf("new_split: %d\n",new_split);
+	FreeArray1D(sig);
 fflush(stdout);
 
 
@@ -1434,15 +1514,14 @@ int JenksSplit(Array1D **decomp, int size, int L, int K)
 	int split;
 	double global_dev;
 	double class_dev;
-	double min_dev = 0;
+	double min_dev = 9999999999999;
 	int min_split;
 	double gof;
 
-	min_split = 0;
 	global_dev = JenksDev(decomp,size,0,L,K);
 	for(split = 1; split < size-1; split++) {
 		class_dev = JenksDev(decomp,size,split,L,K); 
-		if((min_dev == 0) || (class_dev < min_dev)) {
+		if(class_dev < min_dev) {
 			min_split = split;
 			min_dev = class_dev;
 		}
@@ -1466,7 +1545,7 @@ int JenksSplitEigen(Array1D *ev)
 	int split;
 	double global_dev;
 	double class_dev;
-	double min_dev = 1e100;
+	double min_dev = 9999999999999;
 	int min_split;
 	double gof;
 

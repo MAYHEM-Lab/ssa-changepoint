@@ -4,7 +4,6 @@
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
-#include <sys/time.h>
 
 #include "redblack.h"
 #include "dlist.h"
@@ -15,9 +14,6 @@
 #define RAND() (drand48())
 
 #define BAD_VAL (-1000000.0)
-
-double Corr(Array1D *x, Array1D *y);
-int JenksSplitEigen(Array1D *ev);
 
 struct object_stc
 {
@@ -220,7 +216,6 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	int y_i;
 	Array2D *I;
 	double acc;
-	int min_split;
 
 
 	N = series->ydim;
@@ -268,11 +263,6 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	}
 	FreeArray2D(ea);
 	SortEigenVectors(ev,V);
-
-	min_split = JenksSplitEigen(ev);
-printf("min_split: %d\n",min_split);
-fflush(stdout);
-
 
 
 	t_u = MultiplyArray2D(X,V);
@@ -326,6 +316,75 @@ fflush(stdout);
 	}
 	FreeArray2D(t_u);
 
+#if 0
+printf("L: %d, K: %d\n",L,K);
+t_u = TransposeArray2D(U);
+I = MultiplyArray2D(t_u,U);
+PrintArray2D(I);
+exit(1);
+
+
+for(i=0; i < I->ydim; i++) {
+	for(j=0; j < I->xdim; j++) {
+		if(fabs(I->data[i*I->xdim+j]) < (1.0/1000000.0)) {
+			I->data[i*I->xdim+j] = 0.0;
+		}
+		printf("%1.0f ",I->data[i*I->xdim+j]);
+	}
+	printf("\n");
+}
+t_u = TransposeArray2D(U);
+I = MultiplyArray2D(t_u,U);
+printf("U is %d x %d\n",U->ydim,U->xdim);
+printf("U_t * U\n");
+for(i=0; i < I->ydim; i++) {
+	for(j=0; j < I->xdim; j++) {
+		if(fabs(I->data[i*I->xdim+j]) < (1.0/1000000.0)) {
+			I->data[i*I->xdim+j] = 0.0;
+		}
+		printf("%1.1f ",I->data[i*I->xdim+j]);
+	}
+	printf("\n");
+}
+
+printf("D\n");
+PrintArray2D(D);
+t_u = TransposeArray2D(D);
+printf("D^t\n");
+PrintArray2D(t_u);
+exit(1);
+for(i=0; i < K; i++) {
+	printf("eigenvalue_%d: %f\n",i+1,ev->data[i]);
+}
+printf("VT\n");
+PrintArray2D(V_t);
+V_t = InvertArray2D(V);
+printf("V-1\n");
+PrintArray2D(V_t);
+
+exit(1);
+
+I = MultiplyArray2D(V,V_t);
+PrintArray2D(I);
+exit(1);
+t_u = MultiplyArray2D(V,D);
+t_x = MultiplyArray2D(t_u,V_t);
+printf("S\n");
+PrintArray2D(S);
+printf("XT * X\n");
+PrintArray2D(t_x);
+exit(1);
+for(i=0; i < U->ydim; i++) {
+	printf("col0: %f\n",U->data[i*U->xdim+0]);
+}
+for(i=0; i < U->ydim; i++) {
+	printf("col1: %f\n",U->data[i*U->xdim+1]);
+}
+for(i=0; i < U->ydim; i++) {
+	printf("col2: %f\n",U->data[i*U->xdim+2]);
+}
+exit(1);
+#endif
 	V_t = TransposeArray2D(V);
 //	V_t = InvertArray2D(V);
 	if(V_t == NULL) {
@@ -347,10 +406,7 @@ fflush(stdout);
 	
 	}
 
-#if 0
 	sum = MakeArray2D(U_col->ydim,V_row->xdim);
-#endif
-	sum = MakeArray1D(N);
 	if(sum == NULL) {
 		exit(1);
 	}
@@ -361,8 +417,7 @@ fflush(stdout);
 		}
 	}
 
-//	for(j = start; j < end; j++) {
-	for(j = 0; j < min_split; j++) {
+	for(j = start; j < end; j++) {
 		for(i=0; i < U_col->ydim; i++) {
 			U_col->data[i] = U->data[i*U->xdim+j] * sqrt(ev->data[j]);
 		}
@@ -376,7 +431,6 @@ fflush(stdout);
 			exit(1);
 		}
 
-#if 0
 		for(i=0; i < sum->ydim; i++) {
 			for(k=0; k < sum->xdim; k++) {
 				sum->data[i*sum->xdim+k] =
@@ -384,24 +438,24 @@ fflush(stdout);
 				        rank_1->data[i*rank_1->xdim+k];
 			}
 		}
+#if 0
+acc = 0;
+for(i=0; i < rank_1->ydim; i++) {
+	for(k=0; k < rank_1->xdim; k++) {
+		acc += (rank_1->data[i*rank_1->xdim+k] *
+		       rank_1->data[i*rank_1->xdim+k]); 
+	}
+}
+printf("rank_1-%d: %f\n",j+1,acc);
 #endif
-		Y = DiagonalAverage(rank_1);
-		for(i=0; i < sum->ydim; i++) {
-			for(k=0; k < sum->xdim; k++) {
-				sum->data[i*sum->xdim+k] =
-					sum->data[i*sum->xdim+k] +
-				        Y->data[i*Y->xdim+k];
-			}
-		}
+
+
 		FreeArray2D(rank_1);
-		FreeArray2D(Y);
 
 	}
 
-#if 0
 	Y = DiagonalAverage(sum);
 	FreeArray2D(sum);
-#endif
 
 	FreeArray1D(U_col);
 	FreeArray2D(V_row);
@@ -409,10 +463,7 @@ fflush(stdout);
 	FreeArray2D(V_t);
 	FreeArray1D(ev);
 
-#if 0
 	return(Y);
-#endif
-	return(sum);
 		
 }
 
@@ -446,8 +497,6 @@ Array1D **SSARank1(Array1D *series, int L, int start, int end)
 	int k;
 	Array1D **dcomp;
 	Array1D *Y;
-	Array1D *Y1;
-	double r;
 	int y_i;
 	Array2D *I;
 	double acc;
@@ -704,7 +753,7 @@ Object *InitObject(int id, Array1D *series, int L, int K)
 		exit(1);
 	}
 
-	lob->series = DiagonalAverage(series);
+	lob->series = series;
 	lob->id = id;
 	lob->L = L;
 	lob->K = K;
@@ -714,7 +763,6 @@ Object *InitObject(int id, Array1D *series, int L, int K)
 
 void FreeObject(Object *ob)
 {
-	FreeArray1D(ob->series);
 	Free(ob);
 	return;
 }
@@ -738,7 +786,14 @@ Bin *InitBin(int len)
 		exit(1);
 	}
 
-	b->centroid = NULL;
+	b->centroid = MakeArray1D(len);
+	if(b->centroid == NULL) {
+		exit(1);
+	}
+
+	for(i=0; i < b->centroid->ydim; i++) {
+		b->centroid->data[i] = 0;
+	}
 
 	return(b);
 }
@@ -749,9 +804,7 @@ void FreeBin(Bin *b)
 
 	DlistRemove(b->list);
 
-	if(b->centroid != NULL) {
-		FreeArray1D(b->centroid);
-	}
+	FreeArray1D(b->centroid);
 	Free(b);
 
 	return;
@@ -776,67 +829,6 @@ void PrintBin(FILE *fd, Bin *b)
 }
 
 
-void ComputeCentroid(Bin *b, int L, int K)
-{
-	double dist;
-	Array2D *tr_cent;
-	Array2D *tr_dst;
-	Array2D *r_cent;
-	int i;
-	int j;
-	DlistNode *d;
-	Object *ob;
-
-	tr_cent = NULL;
-	DLIST_FORWARD(b->list,d)
-        {
-                ob = (Object *)d->value.v;
-		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
-		if(tr_dst == NULL) {
-			exit(1);
-		}
-		if(tr_cent == NULL) {
-			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
-			if(tr_cent == NULL) {
-				exit(1);
-			}
-			for(i=0; i < tr_cent->ydim; i++) {
-				for(j=0; j < tr_cent->xdim; j++) {
-					tr_cent->data[i*tr_cent->xdim+j] = 0; 
-				}
-			}
-		}
-		for(i=0; i < tr_dst->ydim; i++) {
-			for(j=0; j < tr_dst->xdim; j++) {
-				tr_cent->data[i*tr_cent->xdim+j] +=
-					tr_dst->data[i*tr_dst->xdim+j];
-			}
-		}
-		FreeArray2D(tr_dst);
-	}
-
-
-	r_cent = DiagonalAverage(tr_cent);
-	if(r_cent == NULL) {
-		exit(1);
-	}
-	FreeArray2D(tr_cent);
-	for(i=0; i < r_cent->ydim; i++) {
-		for(j=0; j < r_cent->xdim; j++) {
-			r_cent->data[i*r_cent->xdim+j] /=
-				(double)(b->count);
-		}
-	}
-
-
-	if(b->centroid != NULL) {
-		FreeArray1D(b->centroid);
-	}
-	b->centroid = r_cent;
-
-	return;
-}
-
 void AddObjectToBin(Bin *b, Object *ob)
 {
 	int count;
@@ -849,6 +841,14 @@ void AddObjectToBin(Bin *b, Object *ob)
 	count = b->count;
 	b->count++;
 	DlistAppend(b->list,(Hval)(void *)ob);
+
+	/*
+	for(i=0; i < b->centroid->ydim; i++) {
+		old_val = b->centroid->data[i] * (double)count;
+		new_val = old_val + ob->series->data[i];
+		b->centroid->data[i] = new_val / (double)(b->count);
+	}
+	*/
 
 	return;
 }
@@ -912,6 +912,7 @@ double Corr(Array1D *x, Array1D *y)
 
 	acc = 0;
 	count = 0;
+
 	for(i=0; i < x->ydim; i++) {
 		acc += x->data[i];
 		count++;
@@ -932,7 +933,7 @@ double Corr(Array1D *x, Array1D *y)
 		acc += ((x->data[i] - x_bar) * (y->data[i] - y_bar));
 		count++;
 	}
-	num = acc;
+	num = acc / count;
 
 	acc = 0;
 	count = 0;
@@ -940,7 +941,7 @@ double Corr(Array1D *x, Array1D *y)
 		acc += ((x->data[i] - x_bar) * (x->data[i] - x_bar));
 		count++;
 	}
-	x2 = acc;
+	x2 = acc / count;
 
 	acc = 0;
 	count = 0;
@@ -948,7 +949,7 @@ double Corr(Array1D *x, Array1D *y)
 		acc += ((y->data[i] - y_bar) * (y->data[i] - y_bar));
 		count++;
 	}
-	y2 = acc;
+	y2 = acc / count;
 
 	r = num / sqrt(x2 * y2);
 
@@ -982,21 +983,63 @@ double DistanceW(Bin *b, Array1D *dst, int L, int K)
 	Array2D *tr_dst;
 	int i;
 	int j;
+	DlistNode *d;
+	Object *ob;
+	int adj = 0;
 
-	tr_cent = TrajectoryMatrix(b->centroid,0,L,K);
+	tr_cent = NULL;
+	DLIST_FORWARD(b->list,d)
+        {
+                ob = (Object *)d->value.v;
+		if(ob->series == dst) {
+			adj = 1;
+			continue;
+		}
+		/*
+		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
+		if(tr_dst == NULL) {
+			exit(1);
+		}
+		*/
+		tr_dst = ob->series;
+		if(tr_cent == NULL) {
+			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
+			if(tr_cent == NULL) {
+				exit(1);
+			}
+			for(i=0; i < tr_cent->ydim;i++) {
+				for(j=0; j < tr_cent->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] = 
+						tr_dst->data[i*tr_dst->xdim+j];
+				}
+			}
+			
+		} else {
+			for(i=0; i < tr_dst->ydim; i++) {
+				for(j=0; j < tr_dst->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] +=
+						tr_dst->data[i*tr_dst->xdim+j];
+				}
+			}
+			/*
+			for(i=0; i < tr_dst->ydim; i++) {
+				for(j=0; j < tr_dst->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] /=
+						(double)(b->count-adj);
+				}
+			}
+			*/
+		}
+	}
+
 	if(tr_cent == NULL) {
-		exit(1);
-	}
-
-	tr_dst = TrajectoryMatrix(dst,0,L,K);
-	if(tr_dst == NULL) {
-		exit(1);
+		return(1.0);
 	}
 
 
-	dist = 1.0 - WCorr(tr_cent,tr_dst,L,K);
+//	dist = 1.0 - WCorr(tr_cent,dst,L,K);
+	dist = WCorr(tr_cent,dst,L,K);
 	FreeArray2D(tr_cent);
-	FreeArray2D(tr_dst);
 	return(fabs(dist));
 }
 
@@ -1011,13 +1054,134 @@ double DistanceC(Bin *b, Array1D *dst, int L, int K)
 	int j;
 	DlistNode *d;
 	Object *ob;
+	int adj = 1;
 
+	tr_cent = NULL;
+	DLIST_FORWARD(b->list,d)
+        {
+                ob = (Object *)d->value.v;
+		if(ob->series == dst) {
+			adj = 0;
+			continue;
+		}
+		/*
+		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
+		if(tr_dst == NULL) {
+			exit(1);
+		}
+		*/
+		tr_dst = ob->series;
+		if(tr_cent == NULL) {
+			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
+			if(tr_cent == NULL) {
+				exit(1);
+			}
+			for(i=0; i < tr_dst->ydim; i++) {
+				for(j=0; j < tr_dst->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] = 0;
+				}
+			}
+		}
+		for(i=0; i < tr_dst->ydim; i++) {
+			for(j=0; j < tr_dst->xdim; j++) {
+				tr_cent->data[i*tr_cent->xdim+j] +=
+					tr_dst->data[i*tr_dst->xdim+j];
+			}
+		}
+	}
 
-	dist = 1.0 - Corr(b->centroid,dst);
-//	dist = Corr(r_cent,r_series);
+	/*
+	 * if there is only one and this is it, distance is 0
+	 */
+	if((b->count == 1) && (adj == 0)) {
+		return(1.0);
+	}
+
+	r_cent = DiagonalAverage(tr_cent);
+	if(r_cent == NULL) {
+		exit(1);
+	}
+	FreeArray2D(tr_cent);
+	for(i=0; i < r_cent->ydim; i++) {
+		for(j=0; j < r_cent->xdim; j++) {
+			r_cent->data[i*r_cent->xdim+j] /=
+				(double)(b->count);
+		}
+	}
+
+	r_series = DiagonalAverage(dst);
+	if(r_series == NULL) {
+		exit(1);
+	}
+
+//	dist = 1.0 - Corr(r_cent,r_series);
+	dist = Corr(r_cent,r_series);
+	FreeArray2D(r_cent);
+	FreeArray2D(r_series);
 	return(fabs(dist));
 }
 
+void ComputeCentroid(Bin *b)
+{
+	double dist;
+	Array2D *tr_cent;
+	Array2D *tr_dst;
+	Array2D *r_cent;
+	int i;
+	int j;
+	DlistNode *d;
+	Object *ob;
+
+	tr_cent = NULL;
+	DLIST_FORWARD(b->list,d)
+        {
+                ob = (Object *)d->value.v;
+		/*
+		tr_dst = TrajectoryMatrix(ob->series,0,L,K);
+		if(tr_dst == NULL) {
+			exit(1);
+		}
+		*/
+		tr_dst = ob->series;
+		if(tr_cent == NULL) {
+			tr_cent = MakeArray2D(tr_dst->ydim,tr_dst->xdim);
+			if(tr_cent == NULL) {
+				exit(1);
+			}
+			for(i=0; i < tr_cent->ydim; i++) {
+				for(j=0; j < tr_cent->xdim; j++) {
+					tr_cent->data[i*tr_cent->xdim+j] = 0; 
+				}
+			}
+		}
+		for(i=0; i < tr_dst->ydim; i++) {
+			for(j=0; j < tr_dst->xdim; j++) {
+				tr_cent->data[i*tr_cent->xdim+j] +=
+					tr_dst->data[i*tr_dst->xdim+j];
+			}
+		}
+	}
+
+	r_cent = DiagonalAverage(tr_cent);
+	if(r_cent == NULL) {
+		exit(1);
+	}
+	FreeArray2D(tr_cent);
+	for(i=0; i < r_cent->ydim; i++) {
+		for(j=0; j < r_cent->xdim; j++) {
+			r_cent->data[i*r_cent->xdim+j] /=
+				(double)(b->count);
+		}
+	}
+
+
+	if(b->centroid != NULL) {
+		FreeArray1D(b->centroid);
+	}
+	b->centroid = r_cent;
+
+	return;
+}
 
 int IsEqCentroid(Bin *b1, Bin *b2)
 {
@@ -1058,7 +1222,6 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 {
 	int i;
 	int j;
-	int curr;
 	Bin **bins;
 	Bin **new_bins;
 	Object *ob;
@@ -1067,15 +1230,6 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 	double min_dist;
 	int min_j;
 	double dist;
-	struct timeval tm;
-	int taboo_i;
-	int taboo_j;
-	int taboo_id;
-	int move_id;
-	int move_i;
-	int move_j;
-	int move_count;
-
 
 	/*
 	 * make a set of k bins
@@ -1098,8 +1252,6 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 	/*
 	 * initially, scatter randomly
 	 */
-	gettimeofday(&tm,NULL);
-	srand48(tm.tv_sec+tm.tv_usec);
 	for(i=0; i < L; i++) {
 		ob = InitObject(i,decomp[i],L,K);
 		if(ob == NULL) {
@@ -1107,41 +1259,13 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		}
 		j = RAND() * means;
 		AddObjectToBin(bins[j],ob);
-		ComputeCentroid(bins[j],L,K);
 	}
 
-#if 0
-	curr = 0;
-	for(i=0; i < means; i ++) {
-		for(j=0; j < L/means; j++) {
-			ob = InitObject(curr,decomp[curr],L,K); 
-			if(ob == NULL) {
-				exit(1);
-			}
-			AddObjectToBin(bins[i],ob);
-			ComputeCentroid(bins[i],L,K);
-			curr++;
-		}
+	for(i=0; i < means; i++) {
+		ComputeCentroid(bins[i]);
 	}
-
-	i = i - 1;
-	while(curr < L) {
-		ob = InitObject(curr,decomp[curr],L,K); 
-		if(ob == NULL) {
-			exit(1);
-		}
-		AddObjectToBin(bins[i],ob);
-		ComputeCentroid(bins[i],L,K);
-		curr++;
-	}
-
-#endif
-
-
-	
 
 	done = 0;
-	taboo_id = -1;
 	while(!done)
 	{
 		new_bins = (Bin **)Malloc(means*sizeof(Bin *));
@@ -1162,7 +1286,6 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 		/*
 		 * traverse the existing data
 		 */
-		move_count = 0;
 		for(i=0; i < means; i++)
 		{
 			DLIST_FORWARD(bins[i]->list,d)
@@ -1184,35 +1307,13 @@ Bin **KMeans(Array1D **decomp, int L, int K, int means)
 						min_j = j;
 					}
 				}
-				if(min_j != i) {
-					move_i = i;
-					move_j = min_j;
-					move_id = ob->id;
-					move_count++;
-				}
-if(i != min_j) {
-printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
-}
 				AddObjectToBin(new_bins[min_j],ob);
-				ComputeCentroid(new_bins[min_j],L,K);
 			}
 		}
 
-		if((move_count == 1) &&
-		   (move_j == taboo_i) &&
-		   (move_i == taboo_j) &&
-		   (move_id == taboo_id)) {
-			for(i=0; i < means; i++)
-			{
-				FreeBin(bins[i]);
-			}
-			free(bins);
-			return(new_bins);
+		for(i=0; i < means; i++) {
+			ComputeCentroid(new_bins[i]);
 		}
-		taboo_id = move_id;
-		taboo_i = move_i;
-		taboo_j = move_j;
-		
 
 		/*
 		 * if we have converged, bail out
@@ -1224,7 +1325,8 @@ printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
 				FreeBin(bins[i]);
 			}
 			free(bins);
-			return(new_bins);
+			done = 1;
+			break;
 		}
 		/*
 		 * otherwise, make new_bin into bins and repeat
@@ -1241,260 +1343,12 @@ printf("moving %d from %d to %d, dist: %f\n",ob->id,i,min_j,dist);
 	return(new_bins);
 }
 
-/*
- * https://www.ehdp.com/vitalnet/breaks-1.htm
- */
-
-double JenksDev(Array1D **decomp, int size, int split, int L, int K)
-{
-	int i;
-	DlistNode *d;
-	double acc;
-	double total;
-	Object *ob;
-	double corr;
-	double avg;
-	double avg1;
-	double avg2;
-	double v1;
-	double v2;
-	Bin **bins;
-
-	bins = (Bin **)Malloc(2 * sizeof(Bin *));
-	if(bins == NULL) {
-		exit(1);
-	}
-
-	bins[0] = InitBin(decomp[0]->ydim);
-	bins[1] = InitBin(decomp[0]->ydim);
-
-	if(split == 0) {
-		for(i=0; i < size; i++) {
-			ob = InitObject(i,decomp[i],L,K);
-			if(ob == NULL) {
-				exit(1);
-			}
-			AddObjectToBin(bins[0],ob);
-		}
-		ComputeCentroid(bins[0],L,K);
-		acc = 0;
-		total = 0;
-		DLIST_FORWARD(bins[0]->list,d) {
-			ob = (Object *)d->value.v;
-			corr = 1 - Corr(bins[0]->centroid,ob->series);
-//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
-//			corr = fabs(Corr(bins[0]->centroid,ob->series));
-			acc += corr;
-			total += 1;
-		}
-		avg = acc /total;
-		acc = 0;
-		DLIST_FORWARD(bins[0]->list,d) {
-			ob = (Object *)d->value.v;
-			corr = 1 - Corr(bins[0]->centroid,ob->series);
-//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
-//			corr = fabs(Corr(bins[0]->centroid,ob->series));
-			acc += ((corr - avg) * (corr - avg));
-		}
-		v1 = acc;
-		v2 = 0;
-	} else {
-		for(i=0; i < split; i++) {
-			ob = InitObject(i,decomp[i],L,K);
-			if(ob == NULL) {
-				exit(1);
-			}
-			AddObjectToBin(bins[0],ob);
-		}
-		ComputeCentroid(bins[0],L,K);
-		for(i=split; i < size; i++) {
-			ob = InitObject(i,decomp[i],L,K);
-			if(ob == NULL) {
-				exit(1);
-			}
-			AddObjectToBin(bins[1],ob);
-		}
-		ComputeCentroid(bins[1],L,K);
-		acc = 0;
-		total = 0;
-		DLIST_FORWARD(bins[0]->list,d) {
-			ob = (Object *)d->value.v;
-			corr = 1 - Corr(bins[0]->centroid,ob->series);
-//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
-//			corr = fabs(Corr(bins[0]->centroid,ob->series));
-			acc += corr;
-			total += 1;
-		}
-		avg1 = acc / total;
-		acc = 0;
-		DLIST_FORWARD(bins[0]->list,d) {
-			ob = (Object *)d->value.v;
-			corr = 1 - Corr(bins[0]->centroid,ob->series);
-//			corr = 1 - fabs(Corr(bins[0]->centroid,ob->series));
-//			corr = fabs(Corr(bins[0]->centroid,ob->series));
-			acc += ((corr - avg1) * (corr - avg1));
-		}
-		v1 = acc;
-		acc = 0;
-		total = 0;
-		DLIST_FORWARD(bins[1]->list,d) {
-			ob = (Object *)d->value.v;
-			corr = 1 - Corr(bins[1]->centroid,ob->series);
-//			corr = 1 - fabs(Corr(bins[1]->centroid,ob->series));
-//			corr = fabs(Corr(bins[1]->centroid,ob->series));
-			acc += corr;
-			total += 1;
-		}
-		avg2 = acc / total;
-		acc = 0;
-		DLIST_FORWARD(bins[1]->list,d) {
-			ob = (Object *)d->value.v;
-			corr = 1 - Corr(bins[1]->centroid,ob->series);
-//			corr = 1 - fabs(Corr(bins[1]->centroid,ob->series));
-//			corr = fabs(Corr(bins[1]->centroid,ob->series));
-			acc += ((corr - avg2) * (corr - avg2));
-		}
-		v2 = acc;
-	}
-	DLIST_FORWARD(bins[0]->list,d) {
-		ob = (Object *)d->value.v;
-		FreeObject(ob);
-	}
-	DLIST_FORWARD(bins[1]->list,d) {
-		ob = (Object *)d->value.v;
-		FreeObject(ob);
-	}
-	FreeBin(bins[0]);
-	FreeBin(bins[1]);
-	Free(bins);
-
-	return(v1+v2);
-
-}
-
-double JenksDevEigen(Array1D *ev, int split)
-{
-	int i;
-	double acc;
-	double total;
-	double avg;
-	double avg1;
-	double avg2;
-	double v1;
-	double v2;
-
-	if(split == 0) {
-		acc = 0;
-		total = 0;
-		for(i=0; i < ev->ydim; i++) {
-			acc += ev->data[i];
-			total += 1;
-		}
-		avg = acc /total;
-		acc = 0;
-		for(i=0; i < ev->ydim; i++) {
-			acc += ((ev->data[i] - avg) * (ev->data[i] - avg));
-		}
-		v1 = acc;
-		v2 = 0;
-	} else {
-		acc = 0;
-		total = 0;
-		for(i=0; i < split; i++) {
-			acc += ev->data[i];
-                        total += 1;
-		}
-		avg1 = acc/total;
-		acc = 0;
-		for(i=0; i < split; i++) {
-			acc += ((ev->data[i] - avg1) * (ev->data[i] - avg1));
-		}
-		v1 = acc;
-		
-		acc = 0;
-		total = 0;
-		for(i=split; i < ev->ydim; i++) {
-			acc += ev->data[i];
-                        total += 1;
-		}
-		avg2 = acc/total;
-		acc = 0;
-		for(i=split; i < ev->ydim; i++) {
-			acc += ((ev->data[i] - avg2) * (ev->data[i] - avg2));
-		}
-		v2 = acc;
-	}
-	return(v1+v2);
-}
-
-int JenksSplit(Array1D **decomp, int size, int L, int K)
-{
-	int i;
-	int j;
-	int split;
-	double global_dev;
-	double class_dev;
-	double min_dev = 0;
-	int min_split;
-	double gof;
-
-	min_split = 0;
-	global_dev = JenksDev(decomp,size,0,L,K);
-	for(split = 1; split < size-1; split++) {
-		class_dev = JenksDev(decomp,size,split,L,K); 
-		if((min_dev == 0) || (class_dev < min_dev)) {
-			min_split = split;
-			min_dev = class_dev;
-		}
-		gof = (global_dev - class_dev) / global_dev;
-		printf("split: %d, class: %f, min_split: %d gof: %f\n",
-			split,
-			class_dev,
-			min_split,
-			gof);
-		fflush(stdout);
-	}
-
-	return(min_split);
-
-}
 	
-int JenksSplitEigen(Array1D *ev)
-{
-	int i;
-	int j;
-	int split;
-	double global_dev;
-	double class_dev;
-	double min_dev = 1e100;
-	int min_split;
-	double gof;
 
-	global_dev = JenksDevEigen(ev,0);
-	for(split = 1; split < ev->ydim-1; split++) {
-		class_dev = JenksDevEigen(ev,split); 
-		if(class_dev < min_dev) {
-			min_split = split;
-			min_dev = class_dev;
-		}
-		gof = (global_dev - class_dev) / global_dev;
-		printf("split: %d, class: %f, min_split: %d gof: %f\n",
-			split,
-			class_dev,
-			min_split,
-			gof);
-		fflush(stdout);
-	}
-
-	return(min_split);
-
-}
-
-#define ARGS "x:l:N:e:p:m:"
+#define ARGS "x:l:N:e:p:"
 char *Usage = "usage: ssa-decomp -x xfile\n\
 \t-e range of signal series (start - end || end)\n\
 \t-l lags\n\
-\t-m means (for k-means)\n\
 \t-N number of time series elements in base matrix\n\
 \t-p starting index\n";
 
@@ -1523,15 +1377,12 @@ int main(int argc, char *argv[])
 	int end;
 	Bin **bins;
 	Array1D **rank_arrays;
-	int means;
-	int split;
 	
 
 	N = 0;
 	p = 0;
 	start = -1;
 	end = -1;
-	means = 2;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
@@ -1548,9 +1399,6 @@ int main(int argc, char *argv[])
 				break;
 			case 'N':
 				N = atoi(optarg);
-				break;
-			case 'm':
-				means = atoi(optarg);
 				break;
 			default:
 				fprintf(stderr,
@@ -1598,22 +1446,17 @@ int main(int argc, char *argv[])
 
 	if(start == -1) {
 		start = 0;
-#if 0
 		rank_arrays = SSARank1(x,lags,0,lags);
 		if(rank_arrays == NULL) {
 			exit(1);
 		}
 		K = x->ydim - lags + 1;
-		split = JenksSplit(rank_arrays,lags,lags,K);
-		printf("best jenks split: %d\n",i);
-		bins = KMeans(rank_arrays,lags,K,means);
-		for(i=0; i < means; i++) {
-			printf("Bin: %d\n",i);
+		bins = KMeans(rank_arrays,lags,K,3);
+		for(i=0; i < 3; i++) {
 			PrintBin(stdout,bins[i]);
 		}
-		free(bins);
 		free(rank_arrays);
-#endif
+		free(bins);
 	} else {
 		if(start > 0) {
 			start = start - 1;
