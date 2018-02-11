@@ -3,7 +3,7 @@ MPATH=../mio
 APATH=../matrix
 DPATH=../distributions
 EPATH=../euca-cutils
-LPATH=${APATH}/lapack-3.5.0/lapacke/include/
+LPATH=${APATH}/lapack-3.8.0/lapacke/include/
 CFLAGS=-g -I${MPATH} -I${APATH} -I${LPATH} -I${EPATH} -I${DPATH} -I/usr/local/include
 
 #LLIB=-L${APATH}/lapack-3.5.0 -L/usr/local/Cellar/gcc/6.1.0/lib/gcc/6/ -llapacke -llapack -lblas -lgfortran
