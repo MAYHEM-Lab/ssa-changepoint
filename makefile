@@ -13,7 +13,7 @@ LIBS=${MPATH}/mymalloc.o ${MPATH}/mio.o ${EPATH}/libutils.a -lm ${DPATH}/normal.
 
 #LLIB=-L./lapack-3.5.0 -L/usr/local/Cellar/gcc/4.9.2_1/lib/gcc/4.9/ -llapacke -llapack -lrefblas -lblas -ltmglib -lgfortran
 
-all: ssa-cp ssa-decomp
+all: ssa-cp ssa-decomp ssa-basis
 
 ssa-cp: ssa-cp.c
 	${CC} ${CFLAGS} -DSTANDALONE -DUSELAPACK -o ssa-cp ssa-cp.c ${LIBS}
@@ -21,5 +21,8 @@ ssa-cp: ssa-cp.c
 ssa-decomp: ssa-decomp.c
 	${CC} ${CFLAGS} -DSTANDALONE -DUSELAPACK -o ssa-decomp ssa-decomp.c ${LIBS}
 
+ssa-basis: ssa-basis.c
+	${CC} ${CFLAGS} -DSTANDALONE -DUSELAPACK -o ssa-basis ssa-basis.c ${LIBS}
+
 clean:
-	rm *.o ssa-cp ssa-decomp
+	rm *.o ssa-cp ssa-decomp ssa-basis
