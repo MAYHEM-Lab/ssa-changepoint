@@ -388,7 +388,7 @@ fflush(stdout);
 #endif
 		Y = DiagonalAverage(rank_1);
 		for(i=0; i < Y->ydim; i++) {
-			printf("basis%d: %f\n",j,Y->data[i*Y->xdim+0]);
+			printf("basis%d: %f\n",j+1,Y->data[i*Y->xdim+0]);
 			fflush(stdout);
 		}
 			
