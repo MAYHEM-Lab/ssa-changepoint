@@ -4,8 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
-# include <sys/time.h>
-#include<pthread.h>
+#include <sys/time.h>
 
 #include "redblack.h"
 #include "dlist.h"
@@ -19,8 +18,7 @@
 
 double Corr(Array1D *x, Array1D *y);
 int JenksSplitEigen(Array1D *ev);
-
-int Threads;
+int UseSplit;
 
 struct object_stc
 {
@@ -153,7 +151,7 @@ int SortEigenVectors(Array1D *ev, Array2D *ea)
 
 
 
-Array2D *DiagonalAverageSingle(Array2D *X)
+Array2D *DiagonalAverage(Array2D *X)
 {
 	Array2D *Y;
 	int i;
@@ -189,98 +187,6 @@ Array2D *DiagonalAverageSingle(Array2D *X)
 	return(Y);
 }
 
-struct targ
-{
-	Array2D *X;
-	Array1D *Y;
-	int start;
-	int end;
-};
-
-typedef struct targ TA;
-
-void *DavgThread(void *arg)
-{
-	TA *ta = (TA *)arg;
-	double acc;
-	double tot;
-	int i;
-	int j;
-	int k;
-	Array2D *X = ta->X;
-	Array1D *Y = ta->Y;
-
-	for(k = ta->start; k < ta->end ; k++) {
-		acc = 0;
-		tot = 0;
-		for(i=0; i < X->ydim; i++) {
-			for(j=0; j < X->xdim; j++) {
-				if((i + j) == k) {
-					acc += X->data[i*X->xdim+j];
-					tot++;
-				}
-			}
-		}
-		Y->data[k] = acc / tot;
-	}
-	free(ta);
-	return(NULL);
-}
-
-Array2D *DiagonalAverage(Array2D *X)
-{
-	Array2D *Y;
-	int N;
-	double acc;
-	double tot;
-	TA *ta;
-	int t;
-	pthread_t *tids;
-	int start;
-	int end;
-	int err;
-
-	/*
-	 * first row and last column
-	 */
-	N = X->xdim + (X->ydim - 1);
-	Y = MakeArray1D(N);
-	if(Y == NULL) {
-		exit(1);
-	}
-
-	tids = (pthread_t *)malloc(Threads * sizeof(pthread_t));
-	if(tids == NULL) {
-		exit(1);
-	}
-	start = 0;
-	end = N/Threads;
-	for(t=0; t < Threads; t++) {
-		if(t == (Threads - 1)) {
-			end = N;
-		}
-		ta = (TA *)malloc(sizeof(TA));
-		if(ta == NULL) {
-			exit(1);
-		}
-		ta->X = X;
-		ta->Y = Y;
-		ta->start = start;
-		ta->end = end;
-		err = pthread_create(&tids[t],NULL,DavgThread,(void *)ta);
-		if(err < 0) {
-			exit(1);
-		}
-		start = end;
-		end = start + (N/Threads);
-	}
-	for(t=0; t < Threads; t++ ) {
-		pthread_join(tids[t],NULL);
-	}
-		
-
-	return(Y);
-}
 
 Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 {
@@ -316,6 +222,8 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	Array2D *I;
 	double acc;
 	int min_split;
+	int lstart;
+	int lend;
 
 
 	N = series->ydim;
@@ -458,7 +366,21 @@ fflush(stdout);
 		}
 	}
 
-	for(j = start; j < end; j++) {
+/*
+printf("start: %d end: %d\n",start,end);
+printf("min_split: %d\n",min_split);
+fflush(stdout);
+*/
+
+	if(UseSplit == 1) {
+		lstart = 0;
+		lend = min_split;
+	} else {
+		lstart = start;
+		lend = end;
+	}
+
+	for(j = lstart; j < lend; j++) {
 		for(i=0; i < U_col->ydim; i++) {
 			U_col->data[i] = U->data[i*U->xdim+j] * sqrt(ev->data[j]);
 		}
@@ -482,11 +404,13 @@ fflush(stdout);
 		}
 #endif
 		Y = DiagonalAverage(rank_1);
-		for(i=0; i < Y->ydim; i++) {
-			printf("basis%d: %f\n",j+1,Y->data[i*Y->xdim+0]);
-			fflush(stdout);
+		for(i=0; i < sum->ydim; i++) {
+			for(k=0; k < sum->xdim; k++) {
+				sum->data[i*sum->xdim+k] =
+					sum->data[i*sum->xdim+k] +
+				        Y->data[i*Y->xdim+k];
+			}
 		}
-			
 		FreeArray2D(rank_1);
 		FreeArray2D(Y);
 
@@ -1541,14 +1465,12 @@ int JenksSplit(Array1D **decomp, int size, int L, int K)
 			min_dev = class_dev;
 		}
 		gof = (global_dev - class_dev) / global_dev;
-/*
 		printf("split: %d, class: %f, min_split: %d gof: %f\n",
 			split,
 			class_dev,
 			min_split,
 			gof);
 		fflush(stdout);
-*/
 	}
 
 	return(min_split);
@@ -1588,13 +1510,13 @@ int JenksSplitEigen(Array1D *ev)
 
 }
 
-#define ARGS "B:x:l:N:e:p:m:t:"
-char *Usage = "usage: ssa-basis -x xfile\n\
-\t-B number of basis series to print\n\
+#define ARGS "x:l:N:e:p:m:"
+char *Usage = "usage: ssa-decomp -x xfile\n\
+\t-e range of signal series (start - end || end)\n\
 \t-l lags\n\
+\t-m means (for k-means)\n\
 \t-N number of time series elements in base matrix\n\
-\t-p starting index\n\
-\t-t threads\n";
+\t-p starting index\n";
 
 char Xfile[4096];
 
@@ -1623,7 +1545,6 @@ int main(int argc, char *argv[])
 	Array1D **rank_arrays;
 	int means;
 	int split;
-	int basis_count;
 	
 
 	N = 0;
@@ -1631,18 +1552,15 @@ int main(int argc, char *argv[])
 	start = -1;
 	end = -1;
 	means = 2;
-	basis_count = 1;
-	Threads = 1;
+	UseSplit = 1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
 				strncpy(Xfile,optarg,sizeof(Xfile));
 				break;
-			case 'B':
-				basis_count = atoi(optarg);
-				break;
 			case 'e':
 				err = SignalRange(optarg,&start,&end);
+				UseSplit = 0;
 				break;
 			case 'l':
 				lags = atoi(optarg);
@@ -1655,9 +1573,6 @@ int main(int argc, char *argv[])
 				break;
 			case 'm':
 				means = atoi(optarg);
-				break;
-			case 't':
-				Threads = atoi(optarg);
 				break;
 			default:
 				fprintf(stderr,
@@ -1703,10 +1618,53 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	start = 0;
-	end = basis_count;
+	if(start == -1) {
+		start = 0;
+#if 0
+		rank_arrays = SSARank1(x,lags,0,lags);
+		if(rank_arrays == NULL) {
+			exit(1);
+		}
+		K = x->ydim - lags + 1;
+		split = JenksSplit(rank_arrays,lags,lags,K);
+		printf("best jenks split: %d\n",i);
+		bins = KMeans(rank_arrays,lags,K,means);
+		for(i=0; i < means; i++) {
+			printf("Bin: %d\n",i);
+			PrintBin(stdout,bins[i]);
+		}
+		free(bins);
+		free(rank_arrays);
+#endif
+	} else {
+		if(start > 0) {
+			start = start - 1;
+		}
+	}
 
-	series_signal = SSADecomposition(x,lags,start,end);
+	if(end == -1) {
+		end = lags - 1;
+	}
+
+
+	if(p == 0) { // if p == 0, start from beginning of x
+		series_signal = SSADecomposition(x,lags,start,end);
+	} else {
+		x_sub = MakeArray1D(x->ydim - p);
+		if(x_sub == NULL) {
+			exit(1);
+		}
+		for(i=p; i < x->ydim; i++) {
+			x_sub->data[i-p] = x->data[i];
+		}
+		series_signal = SSADecomposition(x_sub,lags,start,end);
+		FreeArray1D(x_sub);
+	}
+
+	for(i=0; i < series_signal->ydim; i++) {
+		printf("%f\n",series_signal->data[i]);
+	}
+
 
 	return(0);
 }

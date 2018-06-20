@@ -6,7 +6,7 @@ EPATH=../euca-cutils
 LPATH=${APATH}/lapack-3.8.0/LAPACKE/include/
 CFLAGS=-g -I${MPATH} -I${APATH} -I${LPATH} -I${EPATH} -I${DPATH} -I/usr/local/include
 
-LLIB=-L${APATH}/lapack-3.8.0 -L/usr/local/Cellar/gcc/8.1.0/lib/gcc/8/ -llapacke -llapack -ltatlas -lgfortran -lpthread
+LLIB=-L${APATH}/lapack-3.8.0 -L/usr/local/Cellar/gcc/8.1.0/lib/gcc/8/ -llapacke -llapack -lblas -lgfortran -lpthread
 ALIB=${APATH}/mioarray.o
 LIBS=${MPATH}/mymalloc.o ${MPATH}/mio.o ${EPATH}/libutils.a -lm ${DPATH}/normal.o ${ALIB} ${LLIB}
 

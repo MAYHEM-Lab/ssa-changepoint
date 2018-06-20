@@ -5,6 +5,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 #include "redblack.h"
 #include "dlist.h"
