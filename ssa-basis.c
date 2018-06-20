@@ -19,6 +19,8 @@
 double Corr(Array1D *x, Array1D *y);
 int JenksSplitEigen(Array1D *ev);
 
+int Threads;
+
 struct object_stc
 {
 	int id;
@@ -150,7 +152,7 @@ int SortEigenVectors(Array1D *ev, Array2D *ea)
 
 
 
-Array2D *DiagonalAverage(Array2D *X)
+Array2D *DiagonalAverageSingle(Array2D *X)
 {
 	Array2D *Y;
 	int i;
@@ -186,6 +188,98 @@ Array2D *DiagonalAverage(Array2D *X)
 	return(Y);
 }
 
+struct targ
+{
+	Array2D *X;
+	Array1D *Y;
+	int start;
+	int end;
+};
+
+typedef struct targ TA;
+
+void *DavgThread(void *arg)
+{
+	TA *ta = (TA *)arg;
+	double acc;
+	double tot;
+	int i;
+	int j;
+	int k;
+	Array2D *X = ta->X;
+	Array1D *Y = ta->Y;
+
+	for(k = ta->start; k < ta->end ; k++) {
+		acc = 0;
+		tot = 0;
+		for(i=0; i < X->ydim; i++) {
+			for(j=0; j < X->xdim; j++) {
+				if((i + j) == k) {
+					acc += X->data[i*X->xdim+j];
+					tot++;
+				}
+			}
+		}
+		Y->data[k] = acc / tot;
+	}
+	free(ta);
+	return(NULL);
+}
+
+Array2D *DiagonalAverage(Array2D *X)
+{
+	Array2D *Y;
+	int N;
+	double acc;
+	double tot;
+	TA *ta;
+	int t;
+	pthread_t *tids;
+	int start;
+	int end;
+	int err;
+
+	/*
+	 * first row and last column
+	 */
+	N = X->xdim + (X->ydim - 1);
+	Y = MakeArray1D(N);
+	if(Y == NULL) {
+		exit(1);
+	}
+
+	tids = (pthread_t *)malloc(Threads * sizeof(pthread_t));
+	if(tids == NULL) {
+		exit(1);
+	}
+	start = 0;
+	end = N/Threads;
+	for(t=0; t < Threads; t++) {
+		if(t == (Threads - 1)) {
+			end = N;
+		}
+		ta = (TA *)malloc(sizeof(TA));
+		if(ta == NULL) {
+			exit(1);
+		}
+		ta->X = X;
+		ta->Y = Y;
+		ta->start = start;
+		ta->end = end;
+		err = pthread_create(&tids[t],NULL,DavgThread,(void *)ta);
+		if(err < 0) {
+			exit(1);
+		}
+		start = end;
+		end = start + (N/Threads);
+	}
+	for(t=0; t < Threads; t++ ) {
+		pthread_join(tids[t],NULL);
+	}
+		
+
+	return(Y);
+}
 
 Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 {
@@ -1493,12 +1587,13 @@ int JenksSplitEigen(Array1D *ev)
 
 }
 
-#define ARGS "B:x:l:N:e:p:m:"
+#define ARGS "B:x:l:N:e:p:m:t:"
 char *Usage = "usage: ssa-basis -x xfile\n\
 \t-B number of basis series to print\n\
 \t-l lags\n\
 \t-N number of time series elements in base matrix\n\
-\t-p starting index\n";
+\t-p starting index\n\
+\t-t threads\n";
 
 char Xfile[4096];
 
@@ -1536,6 +1631,7 @@ int main(int argc, char *argv[])
 	end = -1;
 	means = 2;
 	basis_count = 1;
+	Threads = 1;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
@@ -1558,6 +1654,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'm':
 				means = atoi(optarg);
+				break;
+			case 't':
+				Threads = atoi(optarg);
 				break;
 			default:
 				fprintf(stderr,
