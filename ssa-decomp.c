@@ -21,6 +21,7 @@ double Corr(Array1D *x, Array1D *y);
 int JenksSplitEigen(Array1D *ev);
 
 int Threads;
+int NoSplit;
 
 struct object_stc
 {
@@ -364,7 +365,11 @@ Array1D *SSADecomposition(Array1D *series, int L, int start, int end)
 	FreeArray2D(ea);
 	SortEigenVectors(ev,V);
 
-	min_split = JenksSplitEigen(ev);
+	if(NoSplit == 0) {
+		min_split = JenksSplitEigen(ev);
+	} else {
+		min_split = -1;
+	}
 /*
 printf("min_split: %d\n",min_split);
 fflush(stdout);
@@ -422,6 +427,9 @@ fflush(stdout);
 		exit(1);
 	}
 	FreeArray2D(t_u);
+	FreeArray2D(Dm2);
+	FreeArray2D(D2);
+	FreeArray2D(D);
 
 	V_t = TransposeArray2D(V);
 //	V_t = InvertArray2D(V);
@@ -458,8 +466,11 @@ fflush(stdout);
 		}
 	}
 
-//	for(j = start; j < end; j++) {
-	for(j = 0; j < min_split; j++) {
+	if(min_split != -1) {
+		start = 0;
+		end = min_split;
+	}
+	for(j = start; j < end; j++) {
 		for(i=0; i < U_col->ydim; i++) {
 			U_col->data[i] = U->data[i*U->xdim+j] * sqrt(ev->data[j]);
 		}
@@ -505,9 +516,6 @@ fflush(stdout);
 	FreeArray2D(U);
 	FreeArray2D(V_t);
 	FreeArray1D(ev);
-	FreeArray2D(D);
-	FreeArray2D(D2);
-	FreeArray2D(Dm2);
 
 #if 0
 	return(Y);
@@ -1636,6 +1644,7 @@ int main(int argc, char *argv[])
 	end = -1;
 	means = 2;
 	Threads = 1;
+	NoSplit = 0;
 	while((c = getopt(argc,argv,ARGS)) != EOF) {
 		switch(c) {
 			case 'x':
@@ -1724,6 +1733,7 @@ int main(int argc, char *argv[])
 	} else {
 		if(start > 0) {
 			start = start - 1;
+			NoSplit = 1;
 		}
 	}
 
